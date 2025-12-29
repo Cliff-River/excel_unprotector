@@ -13,4 +13,4 @@ def remove_sheet_protection(file_path, output_path):
     print(f"破解完成！已保存至: {output_path}")
 
 # 使用示例
-remove_sheet_protection('protected_file.xlsx', 'unprotected_file.xlsx')
+remove_sheet_protection('data/protected_file.xlsx', 'data/unprotected_file.xlsx')

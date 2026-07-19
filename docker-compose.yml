@@ -1,0 +1,64 @@
+version: '3.8'
+
+services:
+  frontend:
+    build:
+      context: ./excel-unprotector-client
+      dockerfile: Dockerfile
+    container_name: excel-unprotector-frontend
+    ports:
+      - "80:80"
+    networks:
+      - excel-unprotector-network
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          cpus: '0.5'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
+
+  backend:
+    build:
+      context: ./excel_unprotector_server
+      dockerfile: Dockerfile
+    container_name: excel-unprotector-backend
+    ports:
+      - "8000:8000"
+    networks:
+      - excel-unprotector-network
+    environment:
+      - PORT=8000
+    volumes:
+      - ./excel_unprotector_server/data:/app/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 512M
+        reservations:
+          cpus: '0.5'
+          memory: 256M
+
+networks:
+  excel-unprotector-network:
+    driver: bridge
+    name: excel-unprotector-network

@@ -1,6 +1,8 @@
 import axios from "axios";
 import type { UploadResult } from "../types";
 
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/";
+
 interface UploadOptions {
     onProgress?: (progress: number) => void;
     onStatusChange?: (status: "uploading" | "processing") => void;
@@ -14,7 +16,7 @@ export async function uploadFile(
     formData.append("file", file);
 
     try {
-        const response = await axios.post<Blob>("/unprotect", formData, {
+        const response = await axios.post<Blob>(`${API_BASE_URL}unprotect`, formData, {
             responseType: "blob",
             timeout: 120000,
             onUploadProgress: (e) => {

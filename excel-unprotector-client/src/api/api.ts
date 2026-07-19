@@ -1,3 +1,4 @@
+import axios from "axios";
 import type { UploadResult } from "../types";
 
 interface UploadOptions {
@@ -9,44 +10,39 @@ export async function uploadFile(
     file: File,
     options?: UploadOptions,
 ): Promise<UploadResult> {
-    return new Promise((resolve, reject) => {
-        const formData = new FormData();
-        formData.append("file", file);
+    const formData = new FormData();
+    formData.append("file", file);
 
-        const xhr = new XMLHttpRequest();
-
-        xhr.upload.onprogress = (e) => {
-            if (e.lengthComputable) {
-                const progress = (e.loaded / e.total) * 100;
-                options?.onProgress?.(Math.round(progress));
-            }
-        };
-
-        xhr.onloadstart = () => {
-            options?.onStatusChange?.("uploading");
-        };
-
-        xhr.upload.onload = () => {
-            options?.onStatusChange?.("processing");
-        };
-
-        xhr.onload = () => {
-            if (xhr.status === 200) {
-                const blob = xhr.response as Blob;
-                const contentDisposition = xhr.getResponseHeader(
-                    "Content-Disposition",
-                );
-                let downloadedFileName = "unprotected.xlsx";
-                if (contentDisposition) {
-                    const match = contentDisposition.match(/filename=(.+)/);
-                    if (match) {
-                        downloadedFileName = match[1];
+    try {
+        const response = await axios.post<Blob>("/unprotect", formData, {
+            responseType: "blob",
+            timeout: 120000,
+            onUploadProgress: (e) => {
+                if (e.lengthComputable && e.total) {
+                    const progress = (e.loaded / e.total) * 100;
+                    options?.onProgress?.(Math.round(progress));
+                    if (e.loaded === e.total) {
+                        options?.onStatusChange?.("processing");
                     }
                 }
-                resolve({ blob, fileName: downloadedFileName });
-            } else {
-                const blob = xhr.response as Blob;
-                const reader = new FileReader();
+            },
+        });
+
+        const contentDisposition = response.headers["content-disposition"];
+        let downloadedFileName = "unprotected.xlsx";
+        if (contentDisposition) {
+            const match = contentDisposition.match(/filename=(.+)/);
+            if (match) {
+                downloadedFileName = match[1];
+            }
+        }
+
+        return { blob: response.data, fileName: downloadedFileName };
+    } catch (error) {
+        if (axios.isAxiosError(error) && error.response && error.response.data instanceof Blob) {
+            const reader = new FileReader();
+            const { data } = error.response;
+            return new Promise((_, reject) => {
                 reader.onload = () => {
                     let errorMessage = "文件处理失败";
                     try {
@@ -55,21 +51,20 @@ export async function uploadFile(
                     } catch {}
                     reject(new Error(errorMessage));
                 };
-                reader.readAsText(blob);
+                reader.onerror = () => {
+                    reject(new Error("文件处理失败"));
+                };
+                reader.readAsText(data);
+            });
+        }
+        if (axios.isAxiosError(error)) {
+            if (error.code === "ERR_NETWORK") {
+                throw new Error("网络错误，请检查后端服务是否运行");
             }
-        };
-
-        xhr.onerror = () => {
-            reject(new Error("网络错误，请检查后端服务是否运行"));
-        };
-
-        xhr.ontimeout = () => {
-            reject(new Error("请求超时"));
-        };
-
-        xhr.open("POST", "/unprotect");
-        xhr.responseType = "blob";
-        xhr.timeout = 120000;
-        xhr.send(formData);
-    });
+            if (error.code === "ECONNABORTED") {
+                throw new Error("请求超时");
+            }
+        }
+        throw new Error("文件处理失败");
+    }
 }

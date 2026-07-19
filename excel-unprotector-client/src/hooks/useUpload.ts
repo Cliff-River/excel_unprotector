@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from "react";
 import type { UploadState } from "../types";
 import { validateFile } from "../utils/fileUtils";
-import { uploadFile } from "../utils/api";
+import { uploadFile } from "../api/api";
 
 const initialState: UploadState = {
     status: "idle",

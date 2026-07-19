@@ -1,9 +1,9 @@
+import io
 import logging
-import tempfile
 from os import path
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import Response
-from sheet_unprotect import remove_sheet_protection
+from sheet_unprotect import remove_sheet_protection_stream
 import uvicorn
 
 logging.basicConfig(
@@ -39,22 +39,14 @@ async def unprotect_excel(file: UploadFile = File(...)):
         raise HTTPException(status_code=400, detail="只支持 .xlsx 格式的 Excel 文件")
 
     try:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            input_path = path.join(temp_dir, file.filename)
-            output_filename = f"unprotected_{file.filename}"
-            output_path = path.join(temp_dir, output_filename)
+        output_filename = f"unprotected_{file.filename}"
+        content = await file.read()
 
-            logger.info(f"Saving uploaded file to: {input_path}")
-            with open(input_path, "wb") as f:
-                content = await file.read()
-                f.write(content)
-
-            logger.info(f"Starting sheet protection removal for: {file.filename}")
-            remove_sheet_protection(input_path, output_path)
-            logger.info(f"Sheet protection removal completed: {output_filename}")
-
-            with open(output_path, "rb") as f:
-                output_content = f.read()
+        logger.info(f"Starting sheet protection removal for: {file.filename}")
+        input_stream = io.BytesIO(content)
+        output_stream = remove_sheet_protection_stream(input_stream)
+        output_content = output_stream.read()
+        logger.info(f"Sheet protection removal completed: {output_filename}")
 
         return Response(
             content=output_content,

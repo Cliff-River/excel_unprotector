@@ -5,7 +5,7 @@ import io
 from datetime import datetime
 import openpyxl
 
-BASE_URL = "http://localhost:8000"
+BASE_URL = f"http://localhost:{os.environ.get('PORT', '8000')}"
 TEST_FILE_PATH = os.path.join("data", "protected_file.xlsx")
 
 def log_test_result(test_name, method, endpoint, status_code, response_time, response_data, passed):

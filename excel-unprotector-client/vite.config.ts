@@ -12,14 +12,11 @@ export default defineConfig(({ mode }) => {
         plugins: [react(), babel({ presets: [reactCompilerPreset()] })],
         server: {
             proxy: {
-                "/unprotect": {
+                "/api/": {
+                    rewrite: (path) => path.replace(/^\/api/, ""),
                     target: backendUrl,
                     changeOrigin: true,
-                },
-                "/health": {
-                    target: backendUrl,
-                    changeOrigin: true,
-                },
+                }
             },
         },
     };

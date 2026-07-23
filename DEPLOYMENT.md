@@ -81,8 +81,8 @@ volumes:
 
 两个服务通过自定义桥接网络 `excel-unprotector-network` 通信：
 
-- 前端通过 `http://excel-unprotector-backend:8000` 访问后端 API
-- 后端服务名 `excel-unprotector-backend` 在 Docker Compose 网络中可解析
+- 前端通过 `http://backend:8000` 访问后端 API
+- 后端服务名 `backend` 在 Docker Compose 网络中可解析
 
 ## 健康检查
 
@@ -191,7 +191,7 @@ docker compose logs --tail=50
 ### 前端无法访问后端
 
 - 检查 Next.js 配置中的 `rewrites` 是否正确
-- 确保后端服务名 `excel-unprotector-backend` 在网络中可解析
+- 确保后端服务名 `backend` 在网络中可解析
 - 检查后端服务是否通过健康检查
 
 ### Next.js 构建失败

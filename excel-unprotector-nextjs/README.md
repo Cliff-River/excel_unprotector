@@ -118,7 +118,7 @@ async rewrites() {
 
 ### Docker 环境
 
-在 Docker 环境中，API 请求会自动代理到 `http://excel-unprotector-backend:8000`。
+在 Docker 环境中，API 请求会自动代理到 `http://backend:8000`。
 
 ## 使用说明
 
@@ -145,7 +145,7 @@ A: 请检查：
 
 A: 确保：
 - 前端和后端在同一 Docker 网络中
-- 后端服务名称为 `excel-unprotector-backend`
+- 后端服务名称为 `backend`
 - 后端端口为 `8000`
 
 ### Q: 开发模式下 API 请求失败？

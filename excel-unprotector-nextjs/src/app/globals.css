@@ -203,6 +203,9 @@ button {
 .upload-icon {
     color: var(--accent);
     margin-bottom: 16px;
+    display: flex;
+    justify-content: center;
+    width: 100%;
 }
 
 .upload-zone h2 {

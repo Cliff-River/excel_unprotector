@@ -9,6 +9,7 @@
 - **批量处理**: 自动处理文件中的所有工作表
 - **实时反馈**: 上传进度和处理状态实时显示
 - **安全可靠**: 文件在服务器端处理，本地不保存任何数据
+- **服务端渲染**: 使用 Next.js 实现 SSR，提升首屏加载性能
 
 ## 技术架构
 
@@ -16,12 +17,12 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                    Excel Unprotector                        │
 ├───────────────────────┬─────────────────────────────────────┤
-│   Frontend (Client)   │         Backend (Server)            │
+│   Frontend (Next.js)  │         Backend (Server)            │
 ├───────────────────────┼─────────────────────────────────────┤
-│  React 19 + TypeScript│  Python 3.13 + FastAPI             │
-│  Vite 8 + Axios       │  openpyxl + uvicorn                 │
+│  Next.js 16 + TypeScript │  Python 3.13 + FastAPI         │
+│  App Router + Axios   │  openpyxl + uvicorn                 │
 │                       │                                     │
-│  http://localhost:5173│  http://localhost:8000              │
+│  http://localhost:3000│  http://localhost:8000              │
 └───────────────────────┴─────────────────────────────────────┘
 ```
 
@@ -29,27 +30,48 @@
 
 ```
 excel_unprotector/
-├── excel-unprotector-client/   # 前端应用
+├── excel-unprotector-nextjs/   # Next.js 前端应用
 │   ├── src/
+│   │   ├── app/                # Next.js App Router 页面
 │   │   ├── api/                # API 请求封装
 │   │   ├── components/         # React 组件
 │   │   ├── hooks/              # 自定义 Hooks
 │   │   ├── types/              # TypeScript 类型定义
 │   │   └── utils/              # 工具函数
+│   ├── public/                 # 静态资源
 │   ├── package.json
-│   ├── vite.config.ts
+│   ├── next.config.ts
+│   ├── Dockerfile
 │   └── README.md
 ├── excel_unprotector_server/   # 后端服务
 │   ├── main.py                 # FastAPI 应用主文件
 │   ├── sheet_unprotect.py      # 工作表保护移除逻辑
 │   ├── pyproject.toml          # 项目配置与依赖声明
+│   ├── Dockerfile
 │   └── README.md
+├── docker-compose.yml          # Docker Compose 配置
+├── DEPLOYMENT.md               # 部署文档
+├── LICENSE
 └── README.md                   # 项目根文档（本文件）
 ```
 
 ## 快速开始
 
-### 1. 启动后端服务
+### 方式一：使用 Docker Compose（推荐）
+
+```bash
+# 启动所有服务
+docker-compose up --build
+
+# 停止服务
+docker-compose down
+```
+
+前端应用将在 `http://localhost:3000` 运行，后端服务将在 `http://localhost:8000` 运行。
+
+### 方式二：本地开发
+
+#### 1. 启动后端服务
 
 进入后端目录并启动服务：
 
@@ -65,28 +87,25 @@ uv run python main.py
 
 服务将在 `http://localhost:8000` 运行。
 
-### 2. 启动前端应用
+#### 2. 启动前端应用
 
 打开新终端，进入前端目录并启动：
 
 ```bash
-cd excel-unprotector-client
+cd excel-unprotector-nextjs
 
 # 安装依赖
 pnpm install
 
-# 配置环境变量
-cp .env.example .env
-
 # 启动开发服务器
-pnpm dev
+pnpm run dev
 ```
 
-应用将在 `http://localhost:5173` 运行，并自动代理 API 请求到后端服务。
+应用将在 `http://localhost:3000` 运行，并自动代理 API 请求到后端服务。
 
-### 3. 使用应用
+#### 3. 使用应用
 
-1. 打开浏览器访问 `http://localhost:5173`
+1. 打开浏览器访问 `http://localhost:3000`
 2. 拖拽或点击选择受保护的 `.xlsx` 文件
 3. 等待上传和处理完成
 4. 点击下载按钮获取已解除保护的文件
@@ -140,8 +159,8 @@ curl -X POST "http://localhost:8000/unprotect" -F "file=@protected_file.xlsx" -o
 
 ### 前端
 
-- Node.js >= 18
-- pnpm
+- Node.js >= 22.0.0
+- pnpm >= 9.0.0
 
 ## 开发
 
@@ -157,16 +176,39 @@ uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ### 前端开发
 
 ```bash
-cd excel-unprotector-client
-pnpm dev
+cd excel-unprotector-nextjs
+pnpm run dev
 ```
 
 ### 构建生产版本
 
 ```bash
 # 构建前端
-cd excel-unprotector-client
-pnpm build
+cd excel-unprotector-nextjs
+pnpm run build
+pnpm run start
+```
+
+## Docker 部署
+
+### 构建镜像
+
+```bash
+# 构建前端镜像
+docker build -t excel-unprotector-nextjs ./excel-unprotector-nextjs
+
+# 构建后端镜像
+docker build -t excel-unprotector-server ./excel_unprotector_server
+```
+
+### 运行容器
+
+```bash
+# 运行后端
+docker run -d -p 8000:8000 --name excel-unprotector-backend excel-unprotector-server
+
+# 运行前端
+docker run -d -p 3000:3000 --name excel-unprotector-frontend excel-unprotector-nextjs
 ```
 
 ## 注意事项

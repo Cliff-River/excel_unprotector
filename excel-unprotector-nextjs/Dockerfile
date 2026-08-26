@@ -4,7 +4,9 @@ WORKDIR /app
 
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 
-RUN npm install -g pnpm && pnpm install --frozen-lockfile
+RUN npm install -g pnpm && \
+	pnpm config set registry https://registry.npmmirror.com && \
+	pnpm install --frozen-lockfile
 
 COPY . .
 

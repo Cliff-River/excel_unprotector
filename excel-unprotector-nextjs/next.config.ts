@@ -3,7 +3,7 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
     output: "standalone",
     sassOptions: {
-        includePaths: ["./src"],
+        includePaths: ["./"],
     },
     async rewrites() {
         const isProduction = process.env.NODE_ENV === "production";

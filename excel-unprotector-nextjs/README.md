@@ -23,29 +23,36 @@
 
 ```
 excel-unprotector-nextjs/
-├── src/
-│   ├── app/                  # Next.js App Router 页面
-│   │   ├── layout.tsx        # 根布局组件
-│   │   ├── page.tsx          # 主页面
-│   │   └── globals.css       # 全局样式
-│   ├── components/           # UI 组件
-│   │   ├── Header.tsx        # 页头组件
-│   │   ├── UploadZone.tsx    # 文件上传区域
-│   │   ├── ProgressContainer.tsx  # 进度显示组件
-│   │   ├── ResultContainer.tsx    # 结果展示组件
-│   │   ├── ErrorContainer.tsx     # 错误提示组件
-│   │   ├── Features.tsx      # 功能特性展示
-│   │   ├── FeatureCard.tsx   # 功能卡片组件
-│   │   └── Footer.tsx        # 页脚组件
-│   ├── hooks/                # 自定义 Hooks
-│   │   └── useUpload.ts      # 文件上传状态管理
+├── .trae/
+│   └── rules/                # 项目规则
+├── app/                      # Next.js App Router 页面
+│   ├── layout.tsx            # 根布局组件
+│   ├── page.tsx              # 主页面
+│   └── globals.css           # 全局样式
+├── components/               # UI 组件
+│   ├── NavigationBar/        # 导航栏组件
+│   ├── Header.tsx            # 页头组件
+│   ├── UploadZone.tsx        # 文件上传区域
+│   ├── ProgressContainer.tsx # 进度显示组件
+│   ├── ResultContainer.tsx   # 结果展示组件
+│   ├── ErrorContainer.tsx    # 错误提示组件
+│   ├── Features.tsx          # 功能特性展示
+│   ├── FeatureCard.tsx       # 功能卡片组件
+│   └── Footer.tsx            # 页脚组件
+├── i18n/                     # 国际化配置
+├── lib/                      # 核心逻辑库
 │   ├── api/                  # API 请求封装
 │   │   └── api.ts            # 文件上传 API
+│   ├── hooks/                # 自定义 Hooks
+│   │   └── useUpload.ts      # 文件上传状态管理
 │   ├── types/                # TypeScript 类型定义
 │   │   └── index.ts          # 通用类型
 │   └── utils/                # 工具函数
 │       └── fileUtils.ts      # 文件验证工具
+├── messages/                 # 国际化语言包
 ├── public/                   # 静态资源
+│   └── icons/                # 图标资源
+├── tests/                    # 测试文件
 ├── next.config.ts            # Next.js 配置
 ├── tsconfig.json             # TypeScript 配置
 ├── package.json              # 项目依赖
@@ -165,9 +172,9 @@ A: 检查是否正确配置了 Tailwind CSS，确保 `globals.css` 文件中包�
 
 ### Next.js 配置要点
 
-- **App Router**: 使用 `src/app/` 目录结构
+- **App Router**: 使用根目录 `app/` 结构
 - **Standalone Output**: 启用 `output: "standalone"` 优化 Docker 镜像大小
-- **路径别名**: `@/*` 指向 `src/` 目录
+- **路径别名**: `@/*` 指向项目根目录
 - **API 代理**: 通过 `rewrites` 配置实现请求转发
 
 ## License

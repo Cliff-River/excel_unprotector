@@ -1,5 +1,5 @@
-import type { UploadStatus } from "../types";
-import { formatFileSize } from "../utils/fileUtils";
+import type { UploadStatus } from "@/lib/types";
+import { formatFileSize } from "@/lib/utils/fileUtils";
 
 interface ProgressContainerProps {
     status: "uploading" | "processing";

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import type { UploadState } from "../types";
-import { validateFile } from "../utils/fileUtils";
-import { uploadFile } from "../api/api";
+import type { UploadState } from "@/lib/types";
+import { validateFile } from "@/lib/utils/fileUtils";
+import { uploadFile } from "@/lib/api/api";
 
 const initialState: UploadState = {
     status: "idle",

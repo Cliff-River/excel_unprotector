@@ -1,5 +1,5 @@
 import axios from "axios";
-import type { UploadResult } from "../types";
+import type { UploadResult } from "@/lib/types";
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL || "/api/";
 

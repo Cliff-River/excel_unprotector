@@ -1,6 +1,6 @@
 "use client";
 
-import { formatFileSize } from "../utils/fileUtils";
+import { formatFileSize } from "@/lib/utils/fileUtils";
 
 interface ResultContainerProps {
     fileName: string;

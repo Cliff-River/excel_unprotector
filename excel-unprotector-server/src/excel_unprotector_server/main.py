@@ -2,11 +2,14 @@ import io
 import logging
 import os
 from os import path
+from typing import Annotated
 from urllib.parse import quote
-from fastapi import FastAPI, UploadFile, File, HTTPException
-from fastapi.responses import Response
-from .sheet_unprotect import remove_sheet_protection_stream
+
 import uvicorn
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import Response
+
+from .sheet_unprotect import remove_sheet_protection_stream
 
 logging.basicConfig(
     level=logging.INFO,
@@ -101,7 +104,7 @@ def is_valid_excel_file(filename: str) -> bool:
         }
     }
 )
-async def unprotect_excel(file: UploadFile = File(description="要上传的 .xlsx Excel 文件")):
+async def unprotect_excel(file: Annotated[UploadFile, File(description="要上传的 .xlsx Excel 文件")]):
     """
     解除 Excel 文件工作表保护
 
@@ -152,8 +155,8 @@ async def unprotect_excel(file: UploadFile = File(description="要上传的 .xls
         )
 
     except Exception as e:
-        logger.error(f"Error processing file {file.filename}: {str(e)}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"文件处理失败: {str(e)}")
+        logger.exception(f"Error processing file {file.filename}")
+        raise HTTPException(status_code=500, detail=f"文件处理失败: {e!s}")
 
 
 @app.get(

@@ -3,6 +3,7 @@ from .main import app
 
 def main() -> None:
     import os
+
     import uvicorn
 
     port = int(os.environ.get("PORT", "8000"))

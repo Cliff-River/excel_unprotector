@@ -1,6 +1,8 @@
 import io
-import openpyxl
 from os import path
+
+import openpyxl
+
 
 def remove_sheet_protection(file_path, output_path):
     wb = openpyxl.load_workbook(file_path)

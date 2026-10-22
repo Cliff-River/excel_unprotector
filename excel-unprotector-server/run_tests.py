@@ -1,9 +1,11 @@
-import requests
-import time
-import os
 import io
+import os
+import sys
+import time
 from datetime import datetime
+
 import openpyxl
+import requests
 
 BASE_URL = f"http://localhost:{os.environ.get('PORT', '8000')}"
 TEST_FILE_PATH = os.path.join("data", "protected_file.xlsx")
@@ -16,7 +18,7 @@ def log_test_result(test_name, method, endpoint, status_code, response_time, res
     print(f"状态码: {status_code}")
     print(f"响应时间: {response_time:.3f}秒")
     print(f"测试结果: {'✅ 通过' if passed else '❌ 失败'}")
-    if isinstance(response_data, dict) or isinstance(response_data, list):
+    if isinstance(response_data, (dict, list)):
         print(f"响应数据: {response_data}")
     elif isinstance(response_data, bytes):
         print(f"响应数据: 二进制数据 ({len(response_data)} bytes)")
@@ -70,7 +72,7 @@ def test_unprotect_valid_file():
                 checks.append(sheet.protection.sheet == False)
             print(f"  ✅ 验证通过: 返回文件包含 {len(wb.worksheets)} 个工作表，所有工作表保护已禁用")
         except Exception as e:
-            print(f"  ❌ 文件验证失败: {str(e)}")
+            print(f"  ❌ 文件验证失败: {e!s}")
             checks.append(False)
         
         passed = all(checks)
@@ -197,7 +199,7 @@ def test_unprotect_invalid_excel():
 
 def main():
     print(f"\n{'#'*70}")
-    print(f"Excel Unprotector API 测试报告")
+    print("Excel Unprotector API 测试报告")
     print(f"测试时间: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
     print(f"{'#'*70}")
 
@@ -217,7 +219,7 @@ def main():
     test_results.append(test_unprotect_invalid_excel())
 
     print(f"\n{'#'*70}")
-    print(f"测试汇总")
+    print("测试汇总")
     print(f"{'#'*70}")
     
     passed_count = sum(1 for r in test_results if r["passed"])
@@ -231,15 +233,15 @@ def main():
     print(f"平均响应时间: {avg_response_time:.3f}秒")
 
     if failed_count > 0:
-        print(f"\n失败的测试用例:")
+        print("\n失败的测试用例:")
         for r in test_results:
             if not r["passed"]:
                 print(f"  - {r['test_name']} (状态码: {r['status_code']})")
         return False
     else:
-        print(f"\n🎉 所有测试用例均通过！")
+        print("\n🎉 所有测试用例均通过！")
         return True
 
 if __name__ == "__main__":
     success = main()
-    exit(0 if success else 1)
+    sys.exit(0 if success else 1)

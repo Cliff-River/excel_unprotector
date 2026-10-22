@@ -1,5 +1,6 @@
 "use client";
 
+import { Button } from "@heroui/react";
 import { formatFileSize } from "@/lib/utils/fileUtils";
 
 interface ResultContainerProps {
@@ -55,10 +56,13 @@ function ResultContainer({
                 </div>
             </div>
             <div className="action-buttons">
-                <button className="download-button" onClick={onDownload}>
+                <Button
+                    size="lg"
+                    className="h-12 max-md:max-w-[280px] max-md:w-full rounded-[10px] px-6 text-base font-medium hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(170,59,255,0.4)]"
+                    onPress={onDownload}
+                >
                     <svg
-                        width="20"
-                        height="20"
+                        className="size-5"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -71,11 +75,15 @@ function ResultContainer({
                         <line x1="12" y1="15" x2="12" y2="3" />
                     </svg>
                     下载文件
-                </button>
-                <button className="reset-button" onClick={onReset}>
+                </Button>
+                <Button
+                    size="lg"
+                    variant="outline"
+                    className="h-12 max-md:max-w-[280px] max-md:w-full rounded-[10px] px-6 text-base font-medium hover:border-(--accent) hover:bg-(--accent-bg)"
+                    onPress={onReset}
+                >
                     <svg
-                        width="20"
-                        height="20"
+                        className="size-5"
                         viewBox="0 0 24 24"
                         fill="none"
                         stroke="currentColor"
@@ -87,7 +95,7 @@ function ResultContainer({
                         <path d="M3 3v5h5" />
                     </svg>
                     处理其他文件
-                </button>
+                </Button>
             </div>
         </div>
     );

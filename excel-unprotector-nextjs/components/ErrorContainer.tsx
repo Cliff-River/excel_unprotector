@@ -1,5 +1,7 @@
 "use client";
 
+import { Button } from "@heroui/react";
+
 interface ErrorContainerProps {
     errorMessage: string;
     onReset: () => void;
@@ -26,10 +28,14 @@ function ErrorContainer({ errorMessage, onReset }: ErrorContainerProps) {
             </div>
             <h2>处理失败</h2>
             <p className="error-message">{errorMessage}</p>
-            <button className="reset-button" onClick={onReset}>
+            <Button
+                size="lg"
+                variant="outline"
+                className="h-12 rounded-[10px] px-6 text-base font-medium hover:border-(--accent) hover:bg-(--accent-bg)"
+                onPress={onReset}
+            >
                 <svg
-                    width="20"
-                    height="20"
+                    className="size-5"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="currentColor"
@@ -41,7 +47,7 @@ function ErrorContainer({ errorMessage, onReset }: ErrorContainerProps) {
                     <path d="M3 3v5h5" />
                 </svg>
                 重试
-            </button>
+            </Button>
         </div>
     );
 }

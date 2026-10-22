@@ -1,3 +1,4 @@
+import { Chip, ProgressBar, Spinner } from "@heroui/react";
 import type { UploadStatus } from "@/lib/types";
 import { formatFileSize } from "@/lib/utils/fileUtils";
 
@@ -50,19 +51,24 @@ function ProgressContainer({
                         <p className="file-size">{formatFileSize(fileSize)}</p>
                     </div>
                 </div>
-                <div className={`status-badge ${status}`}>
+                <Chip
+                    className={`rounded-[20px] px-3 py-1.5 text-[13px] font-medium ${
+                        status === "uploading"
+                            ? "bg-[rgba(59,130,246,0.1)] text-[#3b82f6]"
+                            : "bg-[rgba(245,158,11,0.1)] text-[#f59e0b]"
+                    }`}
+                >
                     {getStatusText(status)}
-                </div>
+                </Chip>
             </div>
 
             {status === "uploading" && (
                 <>
-                    <div className="progress-bar-wrapper">
-                        <div
-                            className="progress-bar"
-                            style={{ width: `${progress}%` }}
-                        />
-                    </div>
+                    <ProgressBar aria-label="上传进度" value={progress}>
+                        <ProgressBar.Track className="bg-[var(--border)]">
+                            <ProgressBar.Fill className="bg-[linear-gradient(90deg,var(--accent)_0%,#8b5cf6_100%)]" />
+                        </ProgressBar.Track>
+                    </ProgressBar>
                     <p className="progress-text">{progress}%</p>
                 </>
             )}
@@ -70,21 +76,7 @@ function ProgressContainer({
             {status === "processing" && (
                 <>
                     <div className="spinner">
-                        <svg
-                            width="48"
-                            height="48"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                        >
-                            <circle
-                                className="spinner-circle"
-                                cx="12"
-                                cy="12"
-                                r="10"
-                                stroke="currentColor"
-                                strokeWidth="3"
-                            />
-                        </svg>
+                        <Spinner size="lg" className="size-12" />
                     </div>
                     <p className="processing-text">
                         正在移除工作表保护，请稍候...

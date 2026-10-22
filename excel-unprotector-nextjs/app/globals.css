@@ -40,6 +40,10 @@
         --accent-border: rgba(192, 132, 252, 0.5);
         --social-bg: rgba(47, 48, 58, 0.5);
         --shadow: rgba(0, 0, 0, 0.4) 0 10px 15px -3px, rgba(0, 0, 0, 0.25) 0 4px 6px -2px;
+
+        /* HeroUI semantic token consumed by Button outline (no .dark class is
+           applied, so the dark value must be provided under prefers-color-scheme) */
+        --default-foreground: var(--text-h);
     }
 }
 
@@ -272,38 +276,6 @@ button {
     color: var(--text);
 }
 
-.status-badge {
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 500;
-}
-
-.status-badge.uploading {
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
-}
-
-.status-badge.processing {
-    background: rgba(245, 158, 11, 0.1);
-    color: #f59e0b;
-}
-
-.progress-bar-wrapper {
-    height: 8px;
-    background: var(--border);
-    border-radius: 4px;
-    overflow: hidden;
-    margin-bottom: 8px;
-}
-
-.progress-bar {
-    height: 100%;
-    background: linear-gradient(90deg, var(--accent) 0%, #8b5cf6 100%);
-    border-radius: 4px;
-    transition: width 0.3s ease;
-}
-
 .progress-text {
     margin: 0;
     text-align: center;
@@ -315,28 +287,6 @@ button {
     display: flex;
     justify-content: center;
     padding: 24px 0;
-}
-
-.spinner svg {
-    color: var(--accent);
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-
-    to {
-        transform: rotate(360deg);
-    }
-}
-
-.spinner-circle {
-    fill: none;
-    stroke-linecap: round;
-    stroke-dasharray: 60;
-    stroke-dashoffset: 30;
 }
 
 .processing-text {
@@ -402,50 +352,6 @@ button {
     justify-content: center;
     gap: 12px;
     flex-wrap: wrap;
-}
-
-.download-button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: var(--accent);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.download-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(170, 59, 255, 0.4);
-}
-
-.download-button:active {
-    transform: translateY(0);
-}
-
-.reset-button {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 12px 24px;
-    background: var(--bg);
-    color: var(--text-h);
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    font-size: 16px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.reset-button:hover {
-    border-color: var(--accent);
-    background: var(--accent-bg);
 }
 
 .error-container {
@@ -577,13 +483,6 @@ button {
     .action-buttons {
         flex-direction: column;
         align-items: center;
-    }
-
-    .download-button,
-    .reset-button {
-        width: 100%;
-        justify-content: center;
-        max-width: 280px;
     }
 }
 

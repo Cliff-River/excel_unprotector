@@ -1,8 +1,11 @@
 [project]
 name = "excel-unprotector-server"
 version = "0.1.0"
-description = "Excel Unprotector API"
+description = "Add your description here"
 readme = "README.md"
+authors = [
+    { name = "Cliff", email = "hzf510920@163.com" }
+]
 requires-python = ">=3.13"
 dependencies = [
     "fastapi>=0.139.2",
@@ -10,3 +13,10 @@ dependencies = [
     "python-multipart>=0.0.12",
     "uvicorn>=0.32.0",
 ]
+
+[project.scripts]
+excel-unprotector-server = "excel_unprotector_server:main"
+
+[build-system]
+requires = ["uv_build>=0.12.2,<0.13.0"]
+build-backend = "uv_build"

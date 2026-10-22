@@ -2,6 +2,7 @@ import io
 import logging
 import os
 from os import path
+from urllib.parse import quote
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import Response
 from sheet_unprotect import remove_sheet_protection_stream
@@ -134,11 +135,19 @@ async def unprotect_excel(file: UploadFile = File(description="要上传的 .xls
         output_content = output_stream.read()
         logger.info(f"Sheet protection removal completed: {output_filename}")
 
+        # RFC 5987: 使用 filename* 支持非 ASCII 文件名，filename 作为 latin-1 回退
+        safe_filename = output_filename.encode("latin-1", errors="replace").decode("latin-1")
+        encoded_filename = quote(output_filename, safe="")
+        content_disposition = (
+            f'attachment; filename="{safe_filename}"; '
+            f"filename*=UTF-8''{encoded_filename}"
+        )
+
         return Response(
             content=output_content,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             headers={
-                "Content-Disposition": f"attachment; filename={output_filename}"
+                "Content-Disposition": content_disposition
             }
         )
 

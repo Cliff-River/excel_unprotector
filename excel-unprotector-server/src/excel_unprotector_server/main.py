@@ -5,7 +5,7 @@ from os import path
 from urllib.parse import quote
 from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.responses import Response
-from sheet_unprotect import remove_sheet_protection_stream
+from .sheet_unprotect import remove_sheet_protection_stream
 import uvicorn
 
 logging.basicConfig(
@@ -190,4 +190,4 @@ async def health_check():
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", "8000"))
-    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=True)
+    uvicorn.run("excel_unprotector_server.main:app", host="0.0.0.0", port=port, reload=True)

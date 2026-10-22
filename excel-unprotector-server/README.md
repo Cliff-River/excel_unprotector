@@ -49,13 +49,13 @@ uv sync
 ### 启动服务
 
 ```bash
-uv run python main.py
+uv run python -m excel_unprotector_server.main
 ```
 
 或使用 uvicorn 直接启动：
 
 ```bash
-uv run uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+uv run uvicorn excel_unprotector_server.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
 服务启动后访问：
@@ -99,9 +99,12 @@ curl http://localhost:8000/health
 ## 项目结构
 
 ```
-excel_unprotector_server/
-├── main.py          # FastAPI 应用主文件
-├── sheet_unprotect.py  # 工作表保护移除逻辑
+excel-unprotector-server/
+├── src/
+│   └── excel_unprotector_server/
+│       ├── __init__.py          # 包入口，导出 app 与启动函数
+│       ├── main.py              # FastAPI 应用主文件
+│       └── sheet_unprotect.py   # 工作表保护移除逻辑
 ├── pyproject.toml   # 项目配置与依赖声明
 ├── uv.lock          # uv 依赖锁文件
 ├── .python-version  # Python 版本指定

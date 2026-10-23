@@ -33,9 +33,22 @@ export async function uploadFile(
         const contentDisposition = response.headers["content-disposition"];
         let downloadedFileName = "unprotected.xlsx";
         if (contentDisposition) {
-            const match = contentDisposition.match(/filename=(.+)/);
-            if (match) {
-                downloadedFileName = match[1];
+            // RFC 5987：优先解析 filename*=UTF-8''<百分号编码>，否则回退到 filename="..."
+            const encodedMatch = contentDisposition.match(
+                /filename\*\s*=\s*([^']*)'[^']*'([^;]+)/i,
+            );
+            const plainMatch =
+                contentDisposition.match(/filename\s*=\s*"([^"]*)"/i) ??
+                contentDisposition.match(/filename\s*=\s*([^;]+)/i);
+
+            if (encodedMatch) {
+                try {
+                    downloadedFileName = decodeURIComponent(encodedMatch[2]);
+                } catch {
+                    downloadedFileName = encodedMatch[2];
+                }
+            } else if (plainMatch) {
+                downloadedFileName = plainMatch[1].trim();
             }
         }
 

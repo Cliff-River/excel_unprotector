@@ -35,7 +35,7 @@ services:
       dockerfile: Dockerfile
     container_name: excel-unprotector-backend
     ports:
-      - "8000:8000"
+      - "8001:8000"
     networks:
       - excel-unprotector-network
     environment:

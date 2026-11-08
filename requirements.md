@@ -1,341 +1,525 @@
-# 需求方案：基于 Next.js 构建物的 Excel Unprotector Tauri 桌面端
+# Excel Unprotector 桌面端开发需求
 
-> 状态：**方案待评审，暂不实施开发**
+> 文档类型：**可执行开发需求**（技术选型与架构决策已冻结，不需要再做方案对比）
 > 日期：2026-11-08
-> 涉及项目：`excel-unprotector-nextjs/`（前端）、`excel-unprotector-tauri/`（Tauri 壳）、`excel-unprotector-server/`（现有 Python 后端，仅作行为基准）
+> 交付目标：以 Tauri v2 打包一个**完全离线**的 Linux 桌面应用，复用 `excel-unprotector-nextjs` 的页面与交互；同时保证现有 Web/Docker 部署行为零回退。
 
 ---
 
-## 1. 背景与目标
+## 0. 执行约定（AI 实施前必读）
 
-现有 Excel Unprotector 由三部分组成：
+1. 本文所有决策均为最终决策，**不得重新选型**、不得引入未列出的技术方案或依赖。
+2. 严格按 §4 的任务顺序实施（T1 → T5），每个任务完成后必须执行该任务列出的验证命令；验证失败必须先修复，不得带着失败进入下一阶段。
+3. **禁止修改**：`excel-unprotector-server/**`、根目录 `docker-compose.yml`、`excel-unprotector-nextjs/Dockerfile`、`excel-unprotector-nextjs/app/**`。
+4. **禁止修改 UI 结构**：`components/**` 除 `Header.tsx` 外一律不动（`Header.tsx` 仅允许增加桌面端外链处理，见 T4）。
+5. 允许新增的依赖仅限：
+   - Next.js 侧：`@tauri-apps/api@^2`、`@tauri-apps/plugin-opener@^2`
+   - Rust 侧：`zip`、`quick-xml`、`tauri-plugin-dialog`
+6. 禁止引入 Python sidecar、Node sidecar、本地 HTTP 服务、远程 API 调用。
+7. 不创建 README/说明文档；不执行 `git commit`、`git push`。
+8. 代码风格与现有文件保持一致；只写必要的注释，不重构无关代码。
+9. 交付时必须输出一份实施报告（写在最终回复中，不落盘），包含：实际执行的验证命令与结果、未验证项（Windows/macOS）、遗留风险。
 
-| 项目 | 技术栈 | 现状 |
+---
+
+## 1. 目标行为
+
+桌面应用启动后必须满足：
+
+1. 页面样式、HeroUI 组件、字体与 Web 版一致，无资源 404、无白屏。
+2. 点击选择或拖拽 `.xlsx` 文件后，由 Rust 在本地完成解保护，**全程不发起任何网络请求**。
+3. 结果页显示文件名 `unprotected_<原文件名>`，中文文件名保持正常。
+4. 点击“下载文件”弹出系统原生“另存为”对话框；确认后文件落盘且可被 Excel/LibreOffice 正常打开，工作表保护已解除；取消对话框后停留在结果页，不报错。
+5. 非 `.xlsx`、超过 50MB、文件损坏三类错误的提示文案与 Web 版一致。
+6. 断开网络后上述功能全部可用。
+7. 同一套 Next.js 源码仍可通过现有命令构建出 Web 版（standalone + `/api` 代理），Docker 部署链路不受影响。
+
+**非目标**：工作簿结构保护（`<workbookProtection>`）与 chartsheet 保护、`.xlsm`/`.xls`、批量处理、自动更新、代码签名、macOS 打包、i18n、任何服务端改造。
+
+---
+
+## 2. 现状基线（实施前请自行核对，以下为事实）
+
+> 下表及全文路径均相对仓库根目录（`excel_unprotector/`）。
+
+| 位置 | 现状 |
+| --- | --- |
+| `excel-unprotector-nextjs/next.config.ts` | `output: "standalone"`；`rewrites()` 将 `/api/:path*` 代理到 `backend:8000`（开发态 `localhost:8000`） |
+| `excel-unprotector-nextjs/lib/api/api.ts` | 仅有 `uploadFile(file, options)`：axios POST `${API_BASE_URL}unprotect`，`responseType: "blob"`，解析 `Content-Disposition`（优先 `filename*`），网络错误归一化 |
+| `excel-unprotector-nextjs/lib/hooks/useUpload.ts` | 状态机 `idle → uploading → processing → completed/error`；`handleDownload` 用 `<a download>` 锚点；负责 object URL 创建与回收 |
+| `excel-unprotector-nextjs/lib/utils/fileUtils.ts` | `validateFile`：仅 `.xlsx`，上限 50MB |
+| `excel-unprotector-nextjs/app/page.tsx` | `"use client"`，按状态渲染 `UploadZone/ProgressContainer/ResultContainer/ErrorContainer` |
+| `excel-unprotector-nextjs/components/Header.tsx` | 含 GitHub 外链（`target="_blank"`），桌面端必须拦截改为系统浏览器打开 |
+| `excel-unprotector-tauri/src-tauri/tauri.conf.json` | 脚手架默认值：`beforeDevCommand: "pnpm dev"`、`devUrl: 1420`、`frontendDist: "../dist"`、`csp: null`、窗口 800×600 |
+| `excel-unprotector-tauri/src-tauri/src/lib.rs` | 仅 `greet` 命令 + opener 插件 |
+| `excel-unprotector-tauri/src-tauri/Cargo.toml` | `tauri 2`、`tauri-plugin-opener 2`、serde；edition 2024 |
+| `excel-unprotector-tauri/src/`、`index.html`、`vite.config.ts`、`public/` | Vite + React 模板，待清理 |
+| `excel-unprotector-server/src/excel_unprotector_server/sheet_unprotect.py` | 唯一业务逻辑：遍历 `wb.worksheets` 执行 `sheet.protection.disable()` 后保存 |
+| `excel-unprotector-server/src/excel_unprotector_server/main.py` | 输出文件名规则 `unprotected_{filename}`，MIME `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` |
+| `excel-unprotector-server/data/protected_file.xlsx` | Rust 单测夹具（只读，不得改动） |
+
+---
+
+## 3. 已冻结的技术决策
+
+| # | 决策 | 结果 |
 | --- | --- | --- |
-| `excel-unprotector-nextjs` | Next.js 16 (App Router) / React 19 / HeroUI 3 / Tailwind 4 / axios | 纯客户端页面，上传 `.xlsx` → `/api/unprotect` → 下载结果；`output: "standalone"`，Docker 部署 |
-| `excel-unprotector-server` | FastAPI + openpyxl | 唯一业务逻辑：遍历工作表 `sheet.protection.disable()` 后重新保存 xlsx |
-| `excel-unprotector-tauri` | Tauri v2 + Vite + React 模板 | 刚初始化，仅有 greet 示例，未做任何业务改造 |
-
-**目标**：复用 nextjs 项目的页面与交互作为桌面端 UI，以 Tauri v2 打包为**完全离线、无需后端服务**的桌面应用（Linux / Windows），同时**不破坏现有 Web 版的 Docker 部署**。
-
-**非目标**：
-
-- 不重写 UI、不改变页面外观与交互流程；
-- 不改造 Python 服务端，不新增服务器能力；
-- 本期不含自动更新、代码签名、macOS 打包、国际化。
+| D1 | 解保护实现方式 | Rust 原生：`zip` 重写 + `quick-xml` 剥离 `<sheetProtection>`；不携带 Python |
+| D2 | Next.js 接入方式 | 同一源码、双构建目标：`BUILD_TARGET=desktop` → `output: "export"`；未设置 → 现有 standalone + rewrites |
+| D3 | 静态产物落点 | `next build` 的 `out/` 由 Node 脚本同步到 `excel-unprotector-tauri/dist/`，Tauri `frontendDist` 保持 `../dist` |
+| D4 | 结果保存方式 | Rust 命令经 `tauri-plugin-dialog` 弹原生另存为，`std::fs::write` 落盘；不使用 `<a download>` |
+| D5 | 平台差异位置 | 全部收敛在 `lib/api/` 适配层 + `useUpload` 两处小改；页面与 UI 组件不感知平台 |
+| D6 | IPC 通道 | Tauri v2 原始字节：JS 传 `Uint8Array`，Rust 收 `Vec<u8>`；返回 `tauri::ipc::Response` → JS `ArrayBuffer` |
 
 ---
 
-## 2. 现状关键约束（决定方案的事实）
+## 4. 实施任务
 
-1. **Tauri 只能加载静态资源**。生产态 WebView 通过自定义协议（`tauri://localhost` / `http://tauri.localhost`）加载 `frontendDist` 目录，不能承载 Next.js Node 服务器，因此 nextjs 必须产出**静态导出物**（`output: "export"` → `out/`）。
-2. **当前 nextjs 配置与静态导出冲突**：`output: "standalone"` 与 `rewrites()`（服务端代理 `/api/*` → `backend:8000`）在 export 模式下均不可用；而 Web 版 Docker 仍依赖它们 → 必须做成**同一套代码、按构建目标切换**，不能直接改死。
-3. **页面本身已是纯客户端渲染**（`page.tsx` 顶部 `"use client"`，无服务端数据获取），静态导出不存在数据预取障碍。
-4. **后端逻辑极小且本质是 zip/XML 操作**：xlsx = zip，工作表保护对应 `xl/worksheets/sheetN.xml` 中的 `<sheetProtection>` 元素；openpyxl 的 `disable()` 保存时即省略该元素。移植到 Rust 成本低、可完全对齐。
-5. **tauri 项目的 Vite 脚手架是多余的**：UI 全部来自 nextjs 构建物，Vite+React 模板文件（`src/`、`index.html`、`vite.config.ts` 等）应清理，tauri 项目退化为"Rust 壳 + 构建编排"。
-6. 桌面端没有 HTTP 上传/下载链路：现有进度条（XHR upload progress）、Blob 锚点下载、`/api/unprotect` 代理在桌面态均需替换，但应封装在平台适配层内，UI 组件与 hooks 尽量不动。
+### T1 Next.js 双构建目标与桌面导出脚本
 
----
+**修改** `excel-unprotector-nextjs/next.config.ts`
 
-## 3. 总体架构
+- 读取 `const isDesktop = process.env.BUILD_TARGET === "desktop"`。
+- desktop 分支：`output: "export"`、`images: { unoptimized: true }`、**不注册** `rewrites`。
+- web 分支：`output: "standalone"`，`rewrites()` 原样保留（含 production/development 两套 destination）。
+- 不得预设 `trailingSlash`、`assetPrefix`（仅在 §10 R1 实测失败后按预案启用）。
+- 参考结构：
 
-```
-┌─────────────────────────────── excel-unprotector-tauri（Rust 壳）──────────────────────────────┐
-│                                                                                                │
-│   Tauri WebView（WebView2 / WebKitGTK）                                                        │
-│   ┌──────────────────────────────────────────────────────────────────────┐                     │
-│   │  nextjs 静态导出物 out/（页面、HeroUI、Tailwind、React）              │                     │
-│   │  ┌────────────────────────────────────────────────────────────────┐  │                     │
-│   │  │ lib/api 平台适配层（isTauri 运行时判定）                        │  │                     │
-│   │  │   Web 态  : axios → /api/unprotect（现有逻辑，原样保留）         │  │                     │
-│   │  │   桌面态 : invoke("unprotect_excel") + invoke("save_file")      │  │                     │
-│   │  └────────────────────────────────────────────────────────────────┘  │                     │
-│   └──────────────────────────────────────────────────────────────────────┘                     │
-│                    │ IPC（原始字节，见 §6）                        │ 原生保存对话框            │
-│                    ▼                                                   ▼                        │
-│   Rust 命令：unprotect_excel(Vec<u8>) → Vec<u8>          save_file()（tauri-plugin-dialog）     │
-│              zip 重写 + quick-xml 剥离 <sheetProtection>          std::fs 写入用户选择路径     │
-└────────────────────────────────────────────────────────────────────────────────────────────────┘
-            ▲ 构建期：DESKTOP=1 next build → out/ → 同步到 tauri/dist
-            │
-┌───────────┴───────────────────┐
-│ excel-unprotector-nextjs      │  同一套源码
-│  BUILD_TARGET=web（默认）      │  standalone + rewrites → Docker（现有 Web 版，不受影响）
-└───────────────────────────────┘
+```ts
+const isDesktop = process.env.BUILD_TARGET === "desktop";
+
+const nextConfig: NextConfig = {
+    output: isDesktop ? "export" : "standalone",
+    ...(isDesktop ? { images: { unoptimized: true } } : {}),
+    sassOptions: { includePaths: ["./"] },
+    ...(isDesktop
+        ? {}
+        : {
+              async rewrites() {
+                  /* 现有实现原样保留 */
+              },
+          }),
+};
 ```
 
-三条核心设计原则：
+**新增** `excel-unprotector-nextjs/scripts/export-desktop.mjs`
 
-1. **一份前端源码，两个构建目标**：Web 版能力零回退，桌面版纯静态。
-2. **业务逻辑原生内化**：用 Rust 复刻 openpyxl 行为，不携带 Python 运行时、不依赖网络。
-3. **差异收敛在适配层**：页面组件、hooks、样式不感知平台。
+必须满足：
 
----
+1. 以 `import.meta.url` 解析 `nextjsRoot` 与 `tauriDist = <repo>/excel-unprotector-tauri/dist`，**不依赖 process.cwd()**。
+2. 以 `BUILD_TARGET=desktop` 环境变量执行 `pnpm exec next build`（通过 `spawnSync`，Windows 使用 `pnpm.cmd`；`stdio: "inherit"`），失败时以非 0 退出。
+3. 构建后断言 `out/index.html` 存在，否则报错退出。
+4. 先 `rmSync(tauriDist, { recursive: true, force: true })`，再 `mkdirSync` + `cpSync(out, tauriDist, { recursive: true })`，保证无旧产物残留。
+5. 输出同步条目数与目标路径；全部使用 `node:fs`/`node:path`，不得使用 bash 专有命令。
 
-## 4. 关键方案决策（含备选对比）
+**修改** `excel-unprotector-nextjs/package.json`
 
-### 4.1 "解除保护"能力如何在桌面端实现
+- `scripts` 新增：`"build:desktop": "node scripts/export-desktop.mjs"`。
+- `dependencies` 新增：`"@tauri-apps/api": "^2"`、`"@tauri-apps/plugin-opener": "^2"`。
+- 执行 `pnpm install` 更新 lockfile。
 
-| 方案 | 描述 | 体积/资源 | 离线 | 维护成本 | 结论 |
-| --- | --- | --- | --- | --- | --- |
-| **A. Rust 原生命令（推荐）** | `zip` + `quick-xml` 重写 xlsx，剥离工作表保护元素 | 增量极小（数 MB），无额外运行时 | 完全离线 | 需移植约 20~50 行逻辑并做对齐测试 | **采用** |
-| B. Python Sidecar | PyInstaller 打包 FastAPI+openpyxl，Tauri 拉起本地进程 | 安装包增加 60MB+，需管进程生命周期/端口/三平台二进制 | 离线 | 逻辑零移植，但分发与构建复杂度高 | 不采用 |
-| C. 调用远程服务 | 桌面端直连线上 FastAPI | 最小 | 需联网，文件上传第三方，隐私风险 | 省 native 开发但与桌面端价值相悖 | 不采用 |
-| D. Node Sidecar | 捆绑 Node + 用 JS zip 库处理 | 体积大，链路冗余 | 离线 | 两头不讨好 | 不采用 |
+**验证**
 
-**选 A 的依据**：服务端真实逻辑仅 1 个函数、6 行有效代码，且无 Excel 重算（openpyxl 不执行公式），Rust 侧只做 zip 条目级 XML 过滤，行为可逐字节语义对齐，并用现有受保护样例文件做回归验证。
+```bash
+cd excel-unprotector-nextjs
+pnpm lint
+pnpm build            # Web：standalone 构建成功
+pnpm build:desktop    # 生成 out/ 并同步到 ../excel-unprotector-tauri/dist/
+ls out/index.html ../excel-unprotector-tauri/dist/index.html
+```
 
-### 4.2 Next.js 构建物如何接入 Tauri
-
-- **构建模式切换**：以环境变量 `BUILD_TARGET=desktop` 驱动 `next.config.ts` 分支：
-  - desktop：`output: "export"`、`images.unoptimized = true`、**不注册** `rewrites`；
-  - web（默认）：`output: "standalone"` + 现有 `rewrites`，Dockerfile 与 compose 完全不动。
-- **产物落点**：静态导出产物为 `excel-unprotector-nextjs/out/`。Tauri 配置保持 `frontendDist: "../dist"`，由一个跨平台 Node 编排脚本（nextjs 项目内 `scripts/export-desktop.mjs`）完成 `next build` → 将 `out/` 全量同步到 `excel-unprotector-tauri/dist/`。
-  - 不直接把 `frontendDist` 指到 `../../excel-unprotector-nextjs/out`：Tauri 对项目根目录之外的资源目录在部分打包目标上存在限制，复制进 tauri 项目最稳妥、可预期。
-  - 同步采用"清空目标目录后递归复制"，避免旧产物残留。
-- **开发态**：`beforeDevCommand` 直接启动 next dev 监听 1420 端口，`devUrl: http://localhost:1420`；桌面差异全部由前端运行时 `isTauri()` 判定，dev 态不需要静态导出，HMR 正常工作。
-
-### 4.3 结果文件如何保存
-
-- **不使用** WebView 内 `<a download>`（Linux WebKitGTK 下行为不稳定）。
-- 由 Rust 命令 `save_file(default_name, bytes)` 通过 **tauri-plugin-dialog（Rust 侧 API）**弹原生"另存为"对话框，用户确认后 `std::fs::write` 落盘；取消保存返回 `null`。
-- Rust 侧调用对话框不经过 WebView IPC 授权链，可避免 fs 插件 scope 配置问题；capabilities 保持最小集。
-- 处理结果字节仍先回到前端形成 Blob（沿用现有结果页与"处理其他文件"流程），点击"下载文件"时才弹保存框，交互与 Web 版一致。
-
-### 4.4 拖拽与文件选择
-
-- Tauri v2 窗口的 `dragDropEnabled` 默认为 `true`，HTML5 拖放可直达 WebView，现有 `UploadZone` 拖拽逻辑预期可直接工作（列为 Linux/WebKitGTK 必测项，见 §10）。
-- `<input type="file" accept=".xlsx">` 在 WebView 中自动调用系统文件选择器，无需 Tauri dialog 改造。
+确认 desktop 构建未启用 `rewrites`（构建不报错即证明），且运行时不会发起 `/api/unprotect` 请求（在 dev 窗口网络面板验证）。Web 实现被一起打包不影响判定，运行时由 `isTauri()` 分流。
 
 ---
 
-## 5. 详细改造清单
+### T2 Tauri 壳清理与配置
 
-### 5.1 `excel-unprotector-nextjs/`
+**删除**（Vite 模板残留）：
 
-**修改**
+```
+excel-unprotector-tauri/src/
+excel-unprotector-tauri/index.html
+excel-unprotector-tauri/vite.config.ts
+excel-unprotector-tauri/tsconfig.json
+excel-unprotector-tauri/tsconfig.node.json
+excel-unprotector-tauri/public/
+```
 
-| 文件 | 改动 |
+**改写** `excel-unprotector-tauri/package.json` 为仅保留 Tauri CLI：
+
+```json
+{
+  "name": "excel-unprotector-tauri",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": { "tauri": "tauri" },
+  "devDependencies": { "@tauri-apps/cli": "^2" }
+}
+```
+
+随后在 `excel-unprotector-tauri/` 执行 `pnpm install`（清理 React/Vite 依赖与 lockfile）。
+
+**改写** `excel-unprotector-tauri/src-tauri/tauri.conf.json` 为目标值：
+
+```json
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Excel Unprotector",
+  "version": "0.1.0",
+  "identifier": "app.cliff.excel-unprotector",
+  "build": {
+    "beforeDevCommand": "pnpm --dir ../excel-unprotector-nextjs dev --port 1420",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "node ../excel-unprotector-nextjs/scripts/export-desktop.mjs",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Excel Unprotector",
+        "width": 960,
+        "height": 720,
+        "minWidth": 800,
+        "minHeight": 600,
+        "resizable": true,
+        "dragDropEnabled": true
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; font-src 'self' data:; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["deb", "appimage"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  }
+}
+```
+
+- 生产 `csp` 不得为 `null`。若开发态 HMR 因 CSP 异常，可单独设置 `app.security.devCsp` 放宽，但不得改动生产 `csp`。
+- `bundle.targets` 固定为 `["deb", "appimage"]`；Windows 构建时用 `--bundles nsis` 覆盖，本期不在 Linux 上产出。
+- `capabilities/default.json` 保持 `windows: ["main"]`，权限仅 `"core:default"`、`"opener:default"`；**不开放** fs 任意路径权限（保存由 Rust 侧完成，不经过 ACL）。
+
+**验证**
+
+```bash
+cd excel-unprotector-tauri
+pnpm tauri dev    # 窗口显示 Next.js 页面（此时上传功能尚未改造，仅验证加载/样式/拖拽）
+```
+
+---
+
+### T3 Rust 解保护模块与命令
+
+**依赖**（在 `src-tauri/` 执行 `cargo add`，以解析到的兼容版本为准并提交 `Cargo.lock`）：
+
+| crate | 用途 |
 | --- | --- |
-| `next.config.ts` | 读取 `BUILD_TARGET`：desktop 分支启用 `output: "export"`、`images.unoptimized`、省略 `rewrites`；web 分支保持现状。备选开关 `trailingSlash`/`assetPrefix` 仅在自定义协议资源路径出问题时启用（见 §11 风险 R1） |
-| `package.json` | 新增依赖 `@tauri-apps/api@^2`；新增脚本 `build:desktop`（调用编排脚本）；如页脚存在外链则增加 `@tauri-apps/plugin-opener@^2`（实施时确认 `Footer.tsx`） |
-| `lib/api/api.ts` | 重构为平台分发：Web 实现（现有 axios 逻辑原样下沉）与 Tauri 实现（`invoke`）二选一；保持 `uploadFile(file, options)` 签名与错误文案不变 |
-| `lib/hooks/useUpload.ts` | 仅两处小改：①桌面态跳过 uploading 进度，置为 `processing`；②`handleDownload` 改调适配层 `saveResult(blob, fileName)`（Web 内部仍是锚点下载）。状态机与对象 URL 生命周期管理不变 |
+| `zip` | 读取与重写 xlsx 归档，raw copy 非工作表条目 |
+| `quick-xml` | 流式读写工作表 XML，剥离 `sheetProtection` |
+| `tauri-plugin-dialog` | Rust 侧原生“另存为”对话框 |
 
-**新增**
+保留 `tauri-plugin-opener`；保留 `serde`、`serde_json`。
 
-| 文件 | 职责 |
-| --- | --- |
-| `scripts/export-desktop.mjs` | 跨平台编排：`BUILD_TARGET=desktop` 启动 `next build`；成功后清空并复制 `out/` → `../excel-unprotector-tauri/dist/`；失败非零退出 |
-| `lib/api/unprotect.web.ts` | 现有 axios 上传、Content-Disposition 文件名解析、错误归一化逻辑原样迁入 |
-| `lib/api/unprotect.tauri.ts` | `file.arrayBuffer()` → `invoke("unprotect_excel", { fileName, data })`（Uint8Array 原始字节）→ ArrayBuffer 转 Blob；`saveResult()` 调 `invoke("save_file", …)`；文件名生成 `unprotected_<原名>` 与服务端规则一致 |
-| `lib/api/index.ts`（或在 api.ts 内） | `isTauri()` 判定并导出统一的 `processFile` / `saveResult` |
+**前置验证（在写业务代码前完成）**：临时增加一个 `echo_bytes(data: Vec<u8>) -> tauri::ipc::Response` 命令，用 dev 窗口以 1MB `Uint8Array` 调用并校验往返字节一致，通过后删除该命令。若当前 Tauri 版本不支持该通道，立即按 §10 R2 改用 base64 方案并在报告中记录。
 
-**不改**：`app/`、`components/`、`lib/types`、`lib/utils`、Dockerfile、`pnpm-lock` 之外的 Web 部署链路。
-
-### 5.2 `excel-unprotector-tauri/`
-
-**Rust 侧（`src-tauri/`）**
-
-| 文件 | 改动 |
-| --- | --- |
-| `Cargo.toml` | 新增 `zip`（重写归档）、`quick-xml`（流式 XML 过滤）、`tauri-plugin-dialog`（保存对话框）；移除 `greet` 相关代码（依赖项保留 tauri/serde/serde_json） |
-| `src/lib.rs` | 删除 `greet`；注册 dialog 插件与两个命令：`unprotect_excel`、`save_file`（详见 §6） |
-| `src/excel.rs`（新增模块） | xlsx 解除保护纯函数实现 + `#[cfg(test)]` 单测 |
-| `capabilities/default.json` | 维持 `core:default`；保留 `opener:default`（仅当确认存在外链需求）；不开放 fs 任意路径权限 |
-| `tauri.conf.json` | 见下方配置项 |
-
-`tauri.conf.json` 目标值（要点，非最终文本）：
-
-- `productName`: `Excel Unprotector`；`identifier`: `app.cliff.excel-unprotector`；版本与 nextjs 对齐 `0.1.0`；
-- 窗口：标题 `Excel Unprotector`，`960 × 720`，最小 `800 × 600`，可缩放；
-- `build.devUrl`: `http://localhost:1420`；
-- `build.beforeDevCommand`: `pnpm --dir ../excel-unprotector-nextjs dev --port 1420`；
-- `build.beforeBuildCommand`: `node ../excel-unprotector-nextjs/scripts/export-desktop.mjs`；
-- `build.frontendDist`: `../dist`（保持脚手架默认相对路径）；
-- `app.security.csp`：首发用收紧白名单策略（仅 `self` + 必要 inline style；Next 静态导出的内联引导脚本需实测，若受阻则在发布前专项处理，不留 `null` 上线）；
-- `bundle.targets`：Linux 现环境默认产物；Windows 安装包（NSIS，WebView2 引导下载）在原生 Windows / CI 上产出（见 §9）；
-- 图标：暂用脚手架图标，正式发布前替换为产品图标（`tauri icon` 重新生成全套）。
-
-**前端脚手架清理（删除）**
-
-`src/`（App.tsx/main.tsx/App.css/assets/vite-env.d.ts）、`index.html`、`vite.config.ts`、`tsconfig.json`、`tsconfig.node.json`、`public/`（vite 示例图）。
-
-`package.json` 瘦身为仅保留：`@tauri-apps/cli`（devDependency）与 `tauri` 脚本（`tauri dev` / `tauri build`）；移除 vite、react、模板 typescript 等依赖。React/HeroUI 依赖归属 nextjs 项目，不重复安装。
-
-### 5.3 改造后目录结构（要点）
-
-```
-excel_unprotector/
-├── excel-unprotector-nextjs/
-│   ├── scripts/export-desktop.mjs      # 新增：构建+同步编排
-│   ├── lib/api/
-│   │   ├── api.ts                      # 平台分发
-│   │   ├── unprotect.web.ts            # 新增（由现有逻辑迁入）
-│   │   └── unprotect.tauri.ts          # 新增：IPC 适配
-│   └── next.config.ts                  # 双目标分支
-├── excel-unprotector-tauri/
-│   ├── dist/                           # 新增（gitignore）：nextjs out/ 同步物
-│   ├── package.json                    # 瘦身：仅保留 tauri CLI
-│   └── src-tauri/
-│       ├── src/lib.rs                  # 命令注册
-│       ├── src/excel.rs                # 新增：解除保护逻辑+单测
-│       ├── capabilities/default.json
-│       └── tauri.conf.json
-└── excel-unprotector-server/           # 不动；data/protected_file.xlsx 作为测试基准
-```
-
----
-
-## 6. Rust 核心逻辑规格（与 openpyxl 行为对齐）
-
-### 6.1 命令接口
+**新增** `src-tauri/src/excel.rs`
 
 ```rust
-// 处理：输入原始字节，输出处理后的 xlsx 字节；错误映射为中文字符串
-#[tauri::command]
-fn unprotect_excel(file_name: String, data: Vec<u8>) -> Result<tauri::ipc::Response, String>;
+pub enum ExcelError {
+    InvalidZip,
+    InvalidXml,
+    NoWorksheet,
+    Io(String),
+}
 
-// 保存：弹原生另存为对话框，落盘；取消返回 Ok(None)
-#[tauri::command]
-fn save_file(app: tauri::AppHandle, default_file_name: String, data: Vec<u8>)
-    -> Result<Option<String>, String>;
+impl std::fmt::Display for ExcelError { /* 见 §5.3 文案 */ }
+
+/// 输入 xlsx 字节，输出解除工作表保护后的 xlsx 字节
+pub fn unprotect(input: &[u8]) -> Result<Vec<u8>, ExcelError>;
 ```
 
-- IPC 使用 Tauri v2 的**原始字节通道**：JS 侧传 `Uint8Array`，Rust 侧收 `Vec<u8>`；返回值用 `tauri::ipc::Response`，JS 侧收 `ArrayBuffer`，避免 JSON/base64 膨胀。实施时以当前 Tauri 小版本文档为准；若该版本通道不可用，回退 base64（serde）并在 §11 风险中记录。
-- `save_file` 经 `tauri_plugin_dialog` 的 Rust 侧 blocking save 对话框取路径，`std::fs::write` 写入，返回实际保存路径。
+算法必须严格按 §6 执行；不得对单元格、公式、样式、共享字符串做任何重算或改写；不得处理 chartsheet / workbookProtection。
 
-### 6.2 解除保护算法
+**修改** `src-tauri/src/lib.rs`
 
-输入：xlsx 字节流。输出：新 xlsx 字节流。
+- 删除 `greet`。
+- 注册 `.plugin(tauri_plugin_opener::init())`、`.plugin(tauri_plugin_dialog::init())`。
+- 注册命令 `unprotect_excel`、`save_file`（签名见 §5.1、§5.2）。
 
-1. 用 `zip::ZipArchive` 打开输入；无效 zip / 非 OOXML 包 → 返回错误（前端展示"文件处理失败"类文案）。
-2. 创建 `ZipWriter` 逐条遍历：
-   - 路径匹配 `xl/worksheets/sheet<N>.xml` 的条目：用 `quick-xml` 流式读写，**丢弃 `sheetProtection` 元素**（同时兼容自闭合 `<sheetProtection …/>` 与 `<sheetProtection>…</sheetProtection>` 两种形态；按本地名匹配，忽略命名空间前缀），其余 XML 事件原样写出；
-   - 其他所有条目（含 `[Content_Types].xml`、rels、sharedStrings、styles、目录条目等）：**原始字节逐字复制**（zip crate 的 raw copy 能力，保留原压缩方式与条目名），不做任何重序列化。
-3. 完成后 flush 返回。
+**单元测试**（`excel.rs` 内 `#[cfg(test)]`，夹具用 `std::fs::read` 读取 `CARGO_MANIFEST_DIR/../../excel-unprotector-server/data/protected_file.xlsx`，输出只写系统临时目录）：
 
-**行为对齐边界（与 openpyxl 当前实现严格一致）**：
+1. 正常处理：输出可被 `ZipArchive` 打开；条目数量与名称集合与输入一致；所有 `xl/worksheets/sheet<N>.xml` 中不存在 `sheetProtection`。
+2. 非工作表条目：处理后字节与输入完全一致，且压缩方式一致（证明 raw copy）。
+3. 内容保真：对每个工作表，按顺序提取输入/输出的 XML 事件本地名（Start/Empty/End/Text），过滤掉 `sheetProtection` 后序列必须完全一致。
+4. 幂等：对第 1 步输出再次调用 `unprotect`，仍成功且无 `sheetProtection`。
+5. 异常输入：随机非 zip 字节 → `InvalidZip`；无 `xl/worksheets/sheet*.xml` 的合法 zip → `NoWorksheet`；两者均不得 panic。
+6. 非法 XML 的工作表 → `InvalidXml`。
 
-- 只处理工作表（worksheets）；**不**移除 `xl/workbook.xml` 的 `<workbookProtection>`（工作簿结构保护）；**不**处理 chartsheet；本期作为已知边界写入说明，不擅自扩大范围。
-- 不校验/重算公式、不修改任何单元格内容。
-- 仅接受 `.xlsx`；`.xlsm`/`.xls` 的拦截仍由前端 `validateFile` 完成（与 Web 版一致），Rust 对非 zip 输入返回明确错误即可。
+**验证**
 
-### 6.3 错误文案映射
+```bash
+cd excel-unprotector-tauri/src-tauri
+cargo test
+cargo build
+```
 
-| Rust 侧情形 | 前端收到的文案（与现有体验对齐） |
+---
+
+### T4 前端平台适配层
+
+**新增** `excel-unprotector-nextjs/lib/api/types.ts`
+
+```ts
+export interface UploadOptions {
+    onProgress?: (progress: number) => void;
+    onStatusChange?: (status: "uploading" | "processing") => void;
+}
+```
+
+**新增** `lib/api/unprotect.web.ts`
+
+- 将 `excel-unprotector-nextjs/lib/api/api.ts` 中现有 `uploadFile` 实现**逐行迁入**（axios、超时、进度、`Content-Disposition` 解析、错误归一化全部保持不变）。
+- 新增 `saveResult(blob: Blob, fileName: string): Promise<"saved" | "cancelled">`：用临时 object URL + `<a download>` 触发下载，`finally` 中 `URL.revokeObjectURL`，返回 `"saved"`。
+
+**新增** `lib/api/unprotect.tauri.ts`
+
+- `uploadFile(file, options?)`：
+  1. 不发起任何 HTTP 请求；
+  2. `const data = new Uint8Array(await file.arrayBuffer())`；
+  3. `const buf = await invoke<ArrayBuffer>("unprotect_excel", { fileName: file.name, data })`；
+  4. 若返回值为 `Uint8Array` 则取其 `buffer`，统一转 `ArrayBuffer`；
+  5. 返回 `{ blob: new Blob([buf], { type: XLSX_MIME }), fileName: "unprotected_" + file.name }`；
+  6. 捕获字符串错误原样抛出；非字符串统一抛 `new Error("文件处理失败")`。
+- `saveResult(blob, fileName)`：`invoke<string | null>("save_file", { defaultFileName: fileName, data: new Uint8Array(await blob.arrayBuffer()) })`；返回非空字符串 → `"saved"`，`null` → `"cancelled"`；异常的 message 固定为 `"保存文件失败，请重试"`。
+- 常量 `XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"`。
+
+**改写** `lib/api/api.ts` 为分发入口（不新增 `processFile`，继续沿用 `uploadFile` 名称以减小改动面）：
+
+```ts
+import { isTauri } from "@tauri-apps/api/core";
+import * as web from "./unprotect.web";
+import * as tauri from "./unprotect.tauri";
+
+export function isDesktopRuntime(): boolean {
+    return isTauri();
+}
+
+export const uploadFile: typeof web.uploadFile = (file, options) =>
+    (isTauri() ? tauri.uploadFile : web.uploadFile)(file, options);
+
+export const saveResult: typeof web.saveResult = (blob, fileName) =>
+    (isTauri() ? tauri.saveResult : web.saveResult)(blob, fileName);
+```
+
+要求：判定必须发生在**函数调用时**，不得在模块顶层缓存结果（静态导出期间会在 Node 环境执行一次）。
+
+**修改** `lib/hooks/useUpload.ts`（仅以下三处）
+
+1. 新增 `const blobRef = useRef<Blob | null>(null)`；成功时保存 `result.blob`；`handleReset` 与卸载时置 `null`。
+2. 初始状态：`const desktop = isDesktopRuntime()`，桌面态初始 `status: "processing"`（跳过 uploading），Web 态保持 `"uploading"`；桌面态忽略 `onProgress` 回调。
+3. `handleDownload` 改为 async：先判空 `blobRef.current` 并直接返回；再 `await saveResult(blobRef.current, uploadState.fileName)`；返回 `"cancelled"` 时不做任何状态变更；抛错时切到 `status: "error"` 并展示错误 message（复用 `ErrorContainer`，不新增组件）。
+
+其余状态机、object URL 生命周期、`downloadUrl` 字段保持原样。
+
+**修改** `components/Header.tsx`（唯一允许改动的组件）
+
+- 该文件存在 GitHub 外链（`target="_blank"`），桌面 WebView 内直接跳转会离开应用，必须拦截。
+- 增加 `"use client"`；`onClick` 中若 `isDesktopRuntime()` 为真则 `e.preventDefault()` 并调用 `openUrl(GITHUB_URL)`（`@tauri-apps/plugin-opener`）；Web 态不拦截，行为不变。
+
+**验证**
+
+```bash
+cd excel-unprotector-nextjs
+pnpm lint
+pnpm build
+pnpm build:desktop
+cd ../excel-unprotector-tauri
+pnpm tauri dev
+```
+
+在 dev 窗口完成：选择文件 → 结果页 → 下载 → 取消/保存；再验证 Web 态 `pnpm dev` 下原上传下载流程不变。
+
+---
+
+### T5 打包与验收
+
+```bash
+cd excel-unprotector-tauri
+pnpm tauri build          # 先执行 export-desktop.mjs，再编译并产出 deb/AppImage
+```
+
+产物路径：`src-tauri/target/release/bundle/deb/`、`.../appimage/`。安装/运行后按 §8 逐条执行验收。
+
+---
+
+## 5. 接口契约
+
+### 5.1 `unprotect_excel`
+
+```rust
+#[tauri::command]
+fn unprotect_excel(file_name: String, data: Vec<u8>) -> Result<tauri::ipc::Response, String>;
+```
+
+- `file_name` 为空或不以 `.xlsx`（大小写不敏感）结尾 → `Err("只支持 .xlsx 格式的 Excel 文件")`。
+- 其余错误按 §5.3 返回。
+- 成功时返回 `tauri::ipc::Response::new(bytes)`，JS 侧得到 `ArrayBuffer`。
+
+### 5.2 `save_file`
+
+```rust
+#[tauri::command]
+fn save_file(
+    app: tauri::AppHandle,
+    default_file_name: String,
+    data: Vec<u8>,
+) -> Result<Option<String>, String>;
+```
+
+- 通过 `tauri_plugin_dialog` 的 Rust 侧 blocking save 对话框，`set_file_name(default_file_name)`，添加 Excel 过滤器（`xlsx`）。
+- 用户取消 → `Ok(None)`；成功 → `std::fs::write` 后返回 `Ok(Some(绝对路径))`。
+- 写盘失败 → `Err("保存文件失败，请重试")`。
+- 不得 panic；不经过 fs 插件 scope。
+
+### 5.3 错误文案
+
+| 情形 | 返回文案 |
 | --- | --- |
-| zip 打开失败 / 非 xlsx 包 | `文件处理失败：文件格式无效或已损坏` |
-| XML 解析失败 | `文件处理失败：无法读取工作表内容` |
-| IO/写盘失败 | `保存文件失败，请重试` |
-| 用户取消保存对话框 | 非错误，停留在结果页 |
+| zip 打开失败 | `文件处理失败：文件格式无效或已损坏` |
+| 无 `xl/worksheets/sheet*.xml` | `文件处理失败：文件格式无效或已损坏` |
+| 工作表 XML 解析失败 | `文件处理失败：无法读取工作表内容` |
+| 其他 IO 错误 | `文件处理失败` |
+| 非 `.xlsx` 文件名 | `只支持 .xlsx 格式的 Excel 文件` |
+| 保存对话框写盘失败 | `保存文件失败，请重试` |
+| 用户取消保存 | 非错误，返回 `null` |
+
+### 5.4 TypeScript 统一入口
+
+```ts
+uploadFile(file: File, options?: UploadOptions): Promise<UploadResult>
+saveResult(blob: Blob, fileName: string): Promise<"saved" | "cancelled">
+```
+
+`UploadResult` 沿用 `{ blob: Blob; fileName: string }`（`lib/types` 不改）。
 
 ---
 
-## 7. 前端适配层设计
+## 6. 解保护算法规格
 
-- 统一接口（签名向现有 `uploadFile` 看齐）：
-  - `processFile(file: File): Promise<UploadResult>`（返回 `{ blob, fileName }`）
-  - `saveResult(blob: Blob, fileName: string): Promise<"saved" | "cancelled">`
-- 运行时判定：`import { isTauri } from "@tauri-apps/api/core"`。该包在 Web 构建中被正常打包，`isTauri()` 返回 `false`，不产生任何 IPC 调用，Web 行为零变化。
-- 桌面态 `processFile`：
-  1. 先经现有 `validateFile`（hooks 层已做，不动）；
-  2. `new Uint8Array(await file.arrayBuffer())` → `invoke("unprotect_excel", { fileName: file.name, data })`；
-  3. 响应 `ArrayBuffer` → `new Blob([buf], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" })`；
-  4. 输出文件名 `unprotected_${file.name}`（与 FastAPI 的 `Content-Disposition` 规则一致）。
-- 桌面态进度：没有上传阶段，直接进入 `processing`（现有 UI 已有 Spinner 与"正在移除工作表保护，请稍候..."文案，无需新增 UI）。本地处理通常亚秒级；若大文件出现可感知耗时，后续可用 Tauri `Channel` 补进度，本期不做。
-- 桌面态下载：`blob.arrayBuffer()` → `invoke("save_file", { defaultFileName, data })`；`cancelled` 时保持在结果页；`saved` 可轻量提示（复用现有结果页，不新增组件）。
-- Web 态：现有 axios、进度、Content-Disposition 解析、锚点下载逻辑**逐行搬迁、不改行为**。
+1. 用 `Cursor<&[u8]>` + `ZipArchive` 打开输入；失败 → `InvalidZip`。
+2. 创建 `ZipWriter<Cursor<Vec<u8>>>`，**按原顺序**遍历条目（`0..archive.len()`）。
+3. 条目名判定为工作表：`starts_with("xl/worksheets/sheet")` 且 `ends_with(".xml")` 且中间部分全部为 ASCII 数字。`xl/worksheets/_rels/sheet1.xml.rels` 等不匹配，走 raw copy。
+4. 工作表条目：
+   - 读取该条目全部字节；
+   - 用 `quick_xml::Reader` 逐事件读取，**显式关闭文本 trim**，不调用 `unescape`；
+   - 用 `quick_xml::Writer` 写出；遇到本地名为 `sheetProtection` 的 `Start`/`Empty` 事件时丢弃；若为 `Start`，持续丢弃事件直到同名 `End`（支持嵌套深度计数，兼容 `<sheetProtection>...</sheetProtection>` 与自闭合两种形态）；
+   - 其余事件（Decl、PI、Comment、Start/Empty/End、Text、CData）原样写出，保持属性与命名空间前缀不变；
+   - 若 EOF 时仍处于跳过状态 → `InvalidXml`；
+   - 用 Deflated 压缩写入同名条目（`zip` 2.x 使用 `SimpleFileOptions`，以实际解析版本的类型名为准）。
+5. 其他所有条目（`[Content_Types].xml`、`_rels`、`sharedStrings`、`styles`、目录条目等）：`by_index_raw` + `raw_copy_file`，保留原压缩方式、条目名与字节内容，禁止反序列化重写。
+6. 遍历结束后若未匹配到任何工作表条目 → `NoWorksheet`。
+7. `finish()` 后取回 `Vec<u8>` 返回。
+
+边界：只处理 worksheet；不移除 `workbookProtection`；不处理 chartsheet；不校验/重算公式；不修改任何单元格内容或样式。
 
 ---
 
-## 8. 开发与构建流程
+## 7. 构建与运行命令
 
-| 场景 | 命令（在 `excel-unprotector-tauri/` 下，除注明外） |
+| 场景 | 命令（目录） |
 | --- | --- |
-| 桌面开发（热更新） | `pnpm tauri dev`（自动执行 `next dev --port 1420`） |
-| 桌面生产包 | `pnpm tauri build`（先静态导出并同步 `dist/`，再编译 Rust + 打包） |
-| 仅验证前端静态导出 | nextjs 目录：`pnpm build:desktop`，检查 `out/` 与 `../excel-unprotector-tauri/dist/` |
-| Web 版回归 | nextjs 目录：`pnpm build` / `pnpm dev`；根目录 `docker compose build` 行为不变 |
-| Rust 单测 | `src-tauri/` 下 `cargo test` |
+| 桌面开发（HMR） | `pnpm tauri dev`（`excel-unprotector-tauri/`，自动拉起 next dev :1420） |
+| 桌面生产包 | `pnpm tauri build`（`excel-unprotector-tauri/`） |
+| 仅验证静态导出 | `pnpm build:desktop`（`excel-unprotector-nextjs/`） |
+| Web 回归 | `pnpm lint && pnpm build`（`excel-unprotector-nextjs/`） |
+| Docker 回归 | 根目录 `docker compose build`（配置不得改动） |
+| Rust 单测 | `cargo test`（`excel-unprotector-tauri/src-tauri/`） |
 
-环境前置（Linux）：Rust 工具链（已具备）、Node 22+/pnpm 9+（已具备）、Tauri v2 系统依赖（webkit2gtk 等，当前机器已完成首次编译，依赖齐备）。
-
----
-
-## 9. 发布与打包规划
-
-- **Linux（本期可交付）**：`tauri build` 产出 AppImage / deb（按 `bundle.targets` 收敛为需要的格式）。
-- **Windows（本期准备配置，不在 Linux 上交叉编译）**：依据既往经验，Linux → Windows 交叉编译 Tauri 链路易碎且无法正常签名/验证。可选路径排序：
-  1. GitHub Actions `windows-latest` runner 执行 `pnpm tauri build`（推荐，后续补 CI）；
-  2. Windows 真机/虚拟机原生构建（MSVC + WebView2）。
-  安装包采用 NSIS，WebView2 使用引导下载策略；代码签名证书后续再议。
-- **macOS**：本期不构建、不验证（需真机处理签名/公证）。
-- 版本号三处对齐：nextjs `package.json`、tauri `tauri.conf.json`、Cargo.toml。
+版本号三处必须一致为 `0.1.0`：`excel-unprotector-nextjs/package.json`、`tauri.conf.json`、`Cargo.toml`。
 
 ---
 
-## 10. 测试与验收标准
+## 8. 验收用例（必须逐条执行并记录结果）
 
-### 10.1 Rust 层（cargo test）
+### 8.1 Rust 层
 
-- 以 `excel-unprotector-server/data/protected_file.xlsx` 为夹具：处理后 zip 可正常打开；每个 `xl/worksheets/sheet*.xml` 中不再包含 `sheetProtection` 元素；其余条目数量与名称不变。
-- 产出物用 openpyxl 二次加载（脚本比对）与现有 Python 服务产物做语义等价校验：两版文件均能打开、保护均解除、工作表数量/单元格内容一致。
-- 异常输入：伪造 zip、非 zip 字节、不含 worksheets 目录的 zip，均返回预期错误而非 panic。
-- 无保护元素的 xlsx 经过处理后内容等价（幂等不损坏）。
+- [ ] `cargo test` 全绿，且 §4 T3 的 6 项断言全部覆盖。
+- [ ] 用 openpyxl 二次加载处理结果（有 Python 环境时执行；无则记录为未验证）：
+  - 输出可被 `load_workbook` 打开；
+  - 每个 `sheet.protection.sheet` 为 `False`；
+  - 工作表数量、单元格值与原文件一致。
 
-### 10.2 前端与集成
+### 8.2 Web 回归（证明双目标未回退）
 
-- Web 回归：`pnpm build`、`pnpm lint` 通过；浏览器中上传/进度/下载/错误/重置全流程与改造前一致（证明双目标切换无回退）。
-- 桌面 `tauri dev` 与 `tauri build` 产物分别验证：
-  1. 页面样式、HeroUI 组件、字体与 Web 版一致，无资源 404；
-  2. 点击选择与**拖拽** `.xlsx` 均可用（含 Linux WebKitGTK）；
-  3. 处理成功 → 结果页文件名 `unprotected_原文件名`（中文文件名正常）；
-  4. "下载文件"弹原生保存框，选择路径后文件可被 Excel/LibreOffice 打开且工作表保护已解除；取消保存框停留在结果页；
-  5. 非 xlsx、超 50MB、损坏文件三类错误提示与 Web 版一致；
-  6. "处理其他文件"复位正常；连续处理多个文件无残留/无内存异常增长。
-- 断网状态下上述全部功能可用（离线验收）。
+- [ ] `pnpm lint`、`pnpm build` 通过。
+- [ ] 浏览器中上传 `.xlsx` → 进度 → 结果页 → 下载 → 重置全流程与改造前一致。
+- [ ] 网络错误、500、超时提示文案与改造前一致。
+- [ ] `docker compose build` 成功（不要求启动）。
 
-### 10.3 完成定义
+### 8.3 桌面端（`tauri dev` 与 `tauri build` 产物各测一次）
 
-- 上述用例通过；`cargo test` 通过；两个前端构建目标均成功；无遗留模板示例代码（greet/Vite 模板）。
-
----
-
-## 11. 风险与对策
-
-| # | 风险 | 影响 | 对策 |
-| --- | --- | --- | --- |
-| R1 | Next 静态导出在 Tauri 自定义协议下绝对路径 `/_next/...` 资源加载异常（尤 `tauri://localhost`） | 桌面端白屏/样式丢失 | 先用默认绝对路径在三端实测；备选启用 `trailingSlash: true` + 相对 `assetPrefix`（仅 desktop 分支），以实测结果决定，不预先过度配置 |
-| R2 | Tauri 小版本 IPC 原始字节通道与文档不符 | 50MB 文件传递受阻 | 实施前先写最小命令验证 Uint8Array/Response；回退 base64（接受临时内存放大，50MB 上限内可控） |
-| R3 | Linux WebKitGTK 对 HTML5 拖放的接收与 Tauri 窗口拖放事件冲突 | 拖拽上传失效 | 列为最早验证项；必要时监听 Tauri `getCurrentWebview().onDragDropEvent` 兜底（仅桌面态适配层内处理，不污染 UploadZone） |
-| R4 | Next 16 / Turbopack 静态导出与 HeroUI 3 的边缘兼容问题 | desktop 构建失败 | 编排脚本中 desktop 构建先于 Rust 编译，失败即终止；必要时 desktop 分支回退 webpack 构建 |
-| R5 | CSP 收紧后 Next 内联引导脚本/HeroUI 内联样式被拦截 | 页面功能异常 | 按 script/style 分类实测收敛；发布前必须脱离 `csp: null` |
-| R6 | 重写 zip 时极少数 OOXML 变体（异常命名、chartsheet）与 openpyxl 行为偏差 | 输出文件损坏或保护残留 | 非 worksheet 条目一律 raw 复制；仅按精确路径处理；以真实文件回归，不做"聪明"扩展 |
-| R7 | 双构建目标长期漂移 | Web 版被误伤 | 适配层集中分支；CI/发布前同时跑两种构建；Docker 配置锁死不改 |
-| R8 | Windows 产物无法在当前 Linux 环境验证 | 发布阻塞 | 本期 Linux 先行；Windows 走原生机/CI，发布计划单列，不承诺 Linux 交叉编译 |
+- [ ] 首屏样式、HeroUI 组件、字体与 Web 版一致；控制台无资源 404、无 CSP 拦截报错。
+- [ ] 点击选择 `.xlsx` 可用；拖拽 `.xlsx` 到窗口可用（Linux WebKitGTK 必测）。
+- [ ] 处理后结果页文件名 `unprotected_<原文件名>`，中文文件名正常。
+- [ ] 点击“下载文件”弹出原生保存框；保存后文件可被 Excel/LibreOffice 打开且保护已解除。
+- [ ] 保存框点“取消”后停留在结果页，无错误提示。
+- [ ] 非 `.xlsx`、超过 50MB、损坏文件三类提示与 Web 版一致。
+- [ ] “处理其他文件”复位正常；连续处理 3 个不同文件无残留、无内存异常增长。
+- [ ] 断开网络（或禁用网卡）后全流程仍可用。
+- [ ] 点击 Header 的 GitHub 图标在系统浏览器打开，应用窗口不跳转、不白屏。
+- [ ] AppImage 可执行；deb 可安装并启动。
 
 ---
 
-## 12. 任务分解（实施阶段建议，本方案获批后再启动）
+## 9. 边界与禁止事项
 
-| 阶段 | 内容 | 检查点 |
+1. 不得移除 `.xlsm`/`.xls` 拦截；前端 `validateFile` 保持唯一入口校验。
+2. 不得把 `frontendDist` 指向 nextjs 项目内的 `out/`，必须复制到 `excel-unprotector-tauri/dist/`。
+3. 不得为桌面端新增页面、弹窗组件或进度组件；进度复用 `ProgressContainer`。
+4. 不得让 `lib/hooks` 或 `components` 直接依赖 `zip`/Rust 细节；差异只允许出现在 `lib/api/`。
+5. 不得擅自扩大范围去“顺便兼容”`workbookProtection`、chartsheet 等本期明确排除的边界。
+6. 不得在 Rust 侧使用 `unwrap()`/`expect()` 处理用户输入（测试代码除外）。
+7. 不得在 Web 构建中引入 Node-only 模块或 Tauri 专属 API 的顶层调用。
+
+---
+
+## 10. 风险处置（先实测，失败才启用备选）
+
+| # | 必须验证的点 | 失败时的唯一允许动作 |
 | --- | --- | --- |
-| P0 | 方案评审确认（本文档） | 决策签字：Rust 原生方案、双构建目标、Rust 侧保存框 |
-| P1 | nextjs 双目标配置 + `export-desktop.mjs`；产物落 `tauri/dist` | `out/` 可由静态服务器独立运行；Web 构建回归通过 |
-| P2 | 清理 Tauri Vite 脚手架；改 `tauri.conf.json` 与瘦身后 package.json | `tauri dev` 窗口中原样显示 nextjs 页面 |
-| P3 | Rust `excel.rs` + `unprotect_excel` 命令 + cargo 测试（含与 Python 产物等价校验） | 单测全绿，CLI 级调用验证 |
-| P4 | 前端适配层（双实现 + isTauri 分发）、`save_file` 命令与保存框联调 | §10.2 桌面端用例全部通过 |
-| P5 | 窗口信息、CSP、外链 opener 核查、图标替换、`tauri build` 产物验收 | Linux 安装包可安装可运行，离线可用 |
-| P6（可选） | GitHub Actions 多平台构建（Windows NSIS）；应用图标与版本规范 | Windows 产物在真机验证通过 |
+| R1 | 静态导出在 `tauri://localhost` 下 `/_next/...` 资源加载 | 仅 desktop 分支启用 `trailingSlash: true` 与相对 `assetPrefix`，并回归 Web 构建 |
+| R2 | 当前 Tauri 小版本 `Uint8Array`/`Response` 原始字节通道 | 回退 base64（serde）传递，并在报告中记录；不得因此改变前端接口 |
+| R3 | Linux WebKitGTK 拖拽是否被 Tauri 窗口拖放事件吞掉 | 仅在 `lib/api` 或 `useUpload` 内监听 `onDragDropEvent` 兜底，不改 `UploadZone` |
+| R4 | Next 16 Turbopack 静态导出 + HeroUI 3 兼容性 | desktop 编排脚本可回退 `next build --webpack`，Web 构建不动 |
+| R5 | 收紧 CSP 后内联脚本/样式被拦截 | 按脚本/样式分类实测调整 `csp`；生产环境不得留 `null` |
+| R6 | 极端 OOXML 变体（异常命名、chartsheet） | 非工作表条目一律 raw copy，仅按精确路径处理，不做扩展 |
+| R7 | 双构建目标漂移 | 交付前同时跑 `pnpm build` 与 `pnpm build:desktop`；Docker 配置锁死 |
 
 ---
 
-## 13. 明确不在本期范围
+## 11. 交付物与完成定义
 
-- 工作簿结构保护（`<workbookProtection>`）、chartsheet 保护的移除；
-- `.xlsm` / 旧版 `.xls` 支持、批量文件处理；
-- 桌面端切换远程服务模式、自动更新、崩溃上报；
-- i18n（仓库中 `i18n/`、`messages/` 目前为空占位）；
-- macOS 打包与签名、Windows 代码签名；
-- 对 Python 服务端的任何改动。
+**代码交付**
+
+- `excel-unprotector-nextjs`：`next.config.ts`、`package.json`、`scripts/export-desktop.mjs`、`lib/api/{api.ts,types.ts,unprotect.web.ts,unprotect.tauri.ts}`、`lib/hooks/useUpload.ts`、`components/Header.tsx`。
+- `excel-unprotector-tauri`：删除 Vite 模板；`package.json` 瘦身；`src-tauri/{Cargo.toml,Cargo.lock,tauri.conf.json,capabilities/default.json,src/lib.rs,src/excel.rs}`；`dist/` 为构建产物（已被 `.gitignore` 覆盖，不提交）。
+- 不改动 `excel-unprotector-server/**`、Docker 相关文件、`app/**`、其余 `components/**`。
+
+**完成定义**
+
+- [ ] `cargo test` 全部通过。
+- [ ] `pnpm build`（Web）与 `pnpm build:desktop`（desktop）均成功。
+- [ ] `pnpm tauri dev` 页面正常，`pnpm tauri build` 产出 deb/AppImage。
+- [ ] §8 验收用例逐条通过，并附执行记录。
+- [ ] 仓库中无 `greet`、Vite 模板文件、模板示例资源残留。
+- [ ] 最终回复给出：改动文件清单、验证命令与结果、未验证项（Windows/macOS、openpyxl 校验等）。

@@ -14,7 +14,7 @@ fn unprotect_excel(file_name: String, data: Vec<u8>) -> Result<tauri::ipc::Respo
 }
 
 #[tauri::command]
-fn save_file(
+async fn save_file(
     app: tauri::AppHandle,
     default_file_name: String,
     data: Vec<u8>,

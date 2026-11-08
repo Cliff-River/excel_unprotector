@@ -23,7 +23,6 @@ export function useUpload() {
             if (uploadState.downloadUrl) {
                 URL.revokeObjectURL(uploadState.downloadUrl);
             }
-            blobRef.current = null;
         };
     }, [uploadState.downloadUrl]);
 

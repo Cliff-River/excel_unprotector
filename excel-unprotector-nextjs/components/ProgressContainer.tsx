@@ -65,7 +65,7 @@ function ProgressContainer({
             {status === "uploading" && (
                 <>
                     <ProgressBar aria-label="上传进度" value={progress}>
-                        <ProgressBar.Track className="bg-[var(--border)]">
+                        <ProgressBar.Track className="bg-border">
                             <ProgressBar.Fill className="bg-[linear-gradient(90deg,var(--accent)_0%,#8b5cf6_100%)]" />
                         </ProgressBar.Track>
                     </ProgressBar>

@@ -58,7 +58,7 @@ function ResultContainer({
             <div className="action-buttons">
                 <Button
                     size="lg"
-                    className="h-12 max-md:max-w-[280px] max-md:w-full rounded-[10px] px-6 text-base font-medium hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(170,59,255,0.4)]"
+                    className="h-12 max-md:max-w-70 max-md:w-full rounded-[10px] px-6 text-base font-medium hover:-translate-y-0.5 hover:shadow-[0_4px_12px_rgba(170,59,255,0.4)]"
                     onPress={onDownload}
                 >
                     <svg
@@ -79,7 +79,7 @@ function ResultContainer({
                 <Button
                     size="lg"
                     variant="outline"
-                    className="h-12 max-md:max-w-[280px] max-md:w-full rounded-[10px] px-6 text-base font-medium hover:border-(--accent) hover:bg-(--accent-bg)"
+                    className="h-12 max-md:max-w-70 max-md:w-full rounded-[10px] px-6 text-base font-medium hover:border-accent hover:bg-(--accent-bg)"
                     onPress={onReset}
                 >
                     <svg

@@ -119,6 +119,12 @@ excel-unprotector-server/
 |--------|--------|------|
 | PORT | 8000 | 服务监听端口 |
 
+## 与桌面端的关系
+
+桌面版（Tauri）不启动、也不依赖本服务：`excel-unprotector-tauri/src-tauri/src/excel.rs` 用 Rust（`zip` + `quick-xml`）实现了与 openpyxl 行为对齐的解保护逻辑，并已用本服务的产物做过语义等价校验（工作表、单元格内容一致）。
+
+`data/protected_file.xlsx` 同时作为 Rust 单元测试的只读夹具，请勿修改或删除。
+
 ## 注意事项
 
 - 仅支持 `.xlsx` 格式（Excel 2007 及以上版本）

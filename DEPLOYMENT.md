@@ -4,6 +4,8 @@
 
 本项目包含前端（Next.js + TypeScript）和后端（FastAPI + Python）两个部分，使用 Docker 和 Docker Compose 进行容器化部署。
 
+> 桌面版（Tauri）不通过 Docker 部署，为本地安装包形态，构建与安装说明见 [excel-unprotector-tauri/README.md](excel-unprotector-tauri/README.md)。桌面端构建不会改变 Web 版镜像与部署流程。
+
 ## 环境要求
 
 - Docker 20.10+
@@ -23,9 +25,9 @@ docker compose up -d --build
 
 服务启动后，通过以下地址访问：
 
-- **前端页面**: http://localhost:3000
-- **后端 API**: http://localhost:8000
-- **API 文档**: http://localhost:8000/docs
+- **前端页面**: http://localhost:3001
+- **后端 API**: http://localhost:8001
+- **API 文档**: http://localhost:8001/docs
 
 ### 3. 停止服务
 
@@ -39,7 +41,7 @@ docker compose down
 
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
-| 端口映射 | 3000:3000 | 前端页面通过 3000 端口访问 |
+| 端口映射 | 3001:3000 | 前端页面通过宿主机 3001 端口访问 |
 | 健康检查 | / | 检查 Next.js 应用根路径 |
 | CPU 限制 | 0.5 核 | 最大可用 CPU 资源 |
 | 内存限制 | 256MB | 最大可用内存 |
@@ -48,19 +50,21 @@ docker compose down
 
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
-| 端口映射 | 8000:8000 | API 服务端口 |
+| 端口映射 | 8001:8000 | API 服务通过宿主机 8001 端口访问 |
 | 健康检查 | /health | 直接检查 FastAPI 健康端点 |
 | CPU 限制 | 1.0 核 | 最大可用 CPU 资源 |
 | 内存限制 | 512MB | 最大可用内存 |
 
 ## 数据持久化
 
-后端服务挂载了 `data` 目录，用于存放测试文件：
+后端服务挂载了 `data` 目录，用于存放示例/测试文件：
 
 ```yaml
 volumes:
   - ./excel_unprotector_server/data:/app/data
 ```
+
+> 注：当前 `docker-compose.yml` 中写的是 `./excel_unprotector_server/data`，而仓库目录名为 `excel-unprotector-server`。若需要该挂载生效，请将路径改为 `./excel-unprotector-server/data:/app/data`（本仓库的 Docker 配置按需求保持未改动）。
 
 ## 环境变量
 
@@ -204,9 +208,10 @@ docker compose logs --tail=50
 
 ### Next.js 配置要点
 
-- **App Router**: 使用 `src/app/` 目录结构
-- **Standalone Output**: 启用 `output: "standalone"` 优化 Docker 镜像大小
-- **API 代理**: 通过 `rewrites` 配置实现请求转发到后端
+- **App Router**: 使用 `app/` 目录结构
+- **Standalone Output**: Web 构建启用 `output: "standalone"` 优化 Docker 镜像大小
+- **API 代理**: Web 构建通过 `rewrites` 将请求转发到后端
+- **双构建目标**: 设置 `BUILD_TARGET=desktop` 时改为静态导出（`out/`），供 Tauri 桌面端使用；Docker 构建不设置该变量，行为不变
 
 ### Docker 镜像优化
 

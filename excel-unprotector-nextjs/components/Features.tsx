@@ -1,11 +1,28 @@
+"use client";
+
+import { useSyncExternalStore } from "react";
 import FeatureCard from "./FeatureCard";
+import { isDesktopRuntime } from "@/lib/api/api";
+
+const subscribe = () => () => {};
 
 function Features() {
+    // 服务端快照固定为 Web；客户端挂载后再按真实运行环境切换，避免水合不一致
+    const isDesktop = useSyncExternalStore(
+        subscribe,
+        isDesktopRuntime,
+        () => false,
+    );
+
     return (
         <section className="features">
             <FeatureCard
-                title="简单上传"
-                description="支持拖拽上传，一键选择文件，操作简单直观"
+                title={isDesktop ? "本地导入" : "简单上传"}
+                description={
+                    isDesktop
+                        ? "支持拖拽或点击选择文件，全程无需联网"
+                        : "支持拖拽上传，一键选择文件，操作简单直观"
+                }
                 icon={
                     <svg
                         width="40"
@@ -24,8 +41,12 @@ function Features() {
                 }
             />
             <FeatureCard
-                title="安全处理"
-                description="文件在服务器端处理，本地不保存任何数据"
+                title={isDesktop ? "本地处理" : "安全处理"}
+                description={
+                    isDesktop
+                        ? "文件只在本机处理，不上传网络，也不保存任何数据"
+                        : "文件在服务器端处理，本地不保存任何数据"
+                }
                 icon={
                     <svg
                         width="40"

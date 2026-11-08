@@ -14,6 +14,17 @@ fn unprotect_excel(file_name: String, data: Vec<u8>) -> Result<tauri::ipc::Respo
 }
 
 #[tauri::command]
+fn read_dropped_file(path: String) -> Result<tauri::ipc::Response, String> {
+    if !path.to_lowercase().ends_with(".xlsx") {
+        return Err("只支持 .xlsx 格式的 Excel 文件".to_string());
+    }
+    match std::fs::read(&path) {
+        Ok(bytes) => Ok(tauri::ipc::Response::new(bytes)),
+        Err(_) => Err("无法读取拖拽的文件，请重试".to_string()),
+    }
+}
+
+#[tauri::command]
 async fn save_file(
     app: tauri::AppHandle,
     default_file_name: String,
@@ -45,7 +56,11 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![unprotect_excel, save_file])
+        .invoke_handler(tauri::generate_handler![
+            unprotect_excel,
+            save_file,
+            read_dropped_file
+        ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

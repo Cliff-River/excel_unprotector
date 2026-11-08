@@ -10,8 +10,13 @@ import Footer from "@/components/Footer";
 import { useUpload } from "@/lib/hooks/useUpload";
 
 export default function HomePage() {
-    const { uploadState, handleFileSelect, handleDownload, handleReset } =
-        useUpload();
+    const {
+        uploadState,
+        handleFileSelect,
+        handleDownload,
+        handleDropError,
+        handleReset,
+    } = useUpload();
 
     return (
         <div className="app-container">
@@ -20,7 +25,10 @@ export default function HomePage() {
             <main className="main-content">
                 <div className="upload-container">
                     {uploadState.status === "idle" && (
-                        <UploadZone onFileSelect={handleFileSelect} />
+                        <UploadZone
+                            onFileSelect={handleFileSelect}
+                            onDropError={handleDropError}
+                        />
                     )}
 
                     {(uploadState.status === "uploading" ||

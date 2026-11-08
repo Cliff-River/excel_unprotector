@@ -98,6 +98,14 @@ export function useUpload() {
         }
     }, [uploadState.fileName]);
 
+    const handleDropError = useCallback((message: string) => {
+        setUploadState({
+            ...initialState,
+            status: "error",
+            errorMessage: message,
+        });
+    }, []);
+
     const handleReset = useCallback(() => {
         if (uploadState.downloadUrl) {
             URL.revokeObjectURL(uploadState.downloadUrl);
@@ -110,6 +118,7 @@ export function useUpload() {
         uploadState,
         handleFileSelect,
         handleDownload,
+        handleDropError,
         handleReset,
     };
 }

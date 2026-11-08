@@ -1,14 +1,22 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { isDesktopRuntime } from "@/lib/api/api";
+
+const XLSX_MIME =
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
 interface UploadZoneProps {
     onFileSelect: (files: FileList | null) => void;
+    onDropError: (message: string) => void;
 }
 
-function UploadZone({ onFileSelect }: UploadZoneProps) {
+function UploadZone({ onFileSelect, onDropError }: UploadZoneProps) {
     const [isDragging, setIsDragging] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const zoneRef = useRef<HTMLDivElement>(null);
 
     const handleDragOver = useCallback((e: React.DragEvent) => {
         e.preventDefault();
@@ -33,8 +41,86 @@ function UploadZone({ onFileSelect }: UploadZoneProps) {
         fileInputRef.current?.click();
     }, []);
 
+    // 桌面端使用 Tauri 原生拖放事件：HTML5 drop 在原生拖放启用时不会触发
+    useEffect(() => {
+        if (!isDesktopRuntime()) return;
+
+        let unlisten: (() => void) | undefined;
+        let cancelled = false;
+
+        const isInsideZone = (position: { x: number; y: number }) => {
+            const rect = zoneRef.current?.getBoundingClientRect();
+            if (!rect) return false;
+            const scale = window.devicePixelRatio || 1;
+            const x = position.x / scale;
+            const y = position.y / scale;
+            return (
+                x >= rect.left &&
+                x <= rect.right &&
+                y >= rect.top &&
+                y <= rect.bottom
+            );
+        };
+
+        getCurrentWebview()
+            .onDragDropEvent(async (event) => {
+                const payload = event.payload;
+                if (payload.type === "enter" || payload.type === "over") {
+                    setIsDragging(isInsideZone(payload.position));
+                    return;
+                }
+                if (payload.type === "leave") {
+                    setIsDragging(false);
+                    return;
+                }
+                setIsDragging(false);
+                if (!isInsideZone(payload.position)) return;
+
+                const path =
+                    payload.paths.find((p) =>
+                        p.toLowerCase().endsWith(".xlsx"),
+                    ) ?? payload.paths[0];
+                if (!path) return;
+
+                try {
+                    const response = await invoke<ArrayBuffer | Uint8Array>(
+                        "read_dropped_file",
+                        { path },
+                    );
+                    const buffer =
+                        response instanceof Uint8Array
+                            ? (response.buffer as ArrayBuffer)
+                            : response;
+                    const name = path.split(/[\\/]/).pop() ?? "file.xlsx";
+                    const file = new File([buffer], name, { type: XLSX_MIME });
+                    const dataTransfer = new DataTransfer();
+                    dataTransfer.items.add(file);
+                    onFileSelect(dataTransfer.files);
+                } catch (error) {
+                    onDropError(
+                        typeof error === "string"
+                            ? error
+                            : "无法读取拖拽的文件，请重试",
+                    );
+                }
+            })
+            .then((fn) => {
+                if (cancelled) {
+                    fn();
+                } else {
+                    unlisten = fn;
+                }
+            });
+
+        return () => {
+            cancelled = true;
+            unlisten?.();
+        };
+    }, [onFileSelect, onDropError]);
+
     return (
         <div
+            ref={zoneRef}
             className={`upload-zone ${isDragging ? "dragover" : ""}`}
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}

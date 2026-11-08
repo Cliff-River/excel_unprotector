@@ -1,4 +1,8 @@
+"use client";
+
 import { Link } from "@heroui/react";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { isDesktopRuntime } from "@/lib/api/api";
 
 const GITHUB_URL = "https://github.com/Cliff-River/excel_unprotector";
 
@@ -34,6 +38,12 @@ function Header() {
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label="在 GitHub 上查看项目"
+                    onClick={(e) => {
+                        if (isDesktopRuntime()) {
+                            e.preventDefault();
+                            openUrl(GITHUB_URL);
+                        }
+                    }}
                     className="ml-auto flex size-10 shrink-0 items-center justify-center rounded-xl bg-white/15 text-white no-underline transition-colors hover:bg-white/25 hover:text-white"
                 >
                     <svg

@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import type { UploadState } from "@/lib/types";
 import { validateFile } from "@/lib/utils/fileUtils";
-import { uploadFile } from "@/lib/api/api";
+import { isDesktopRuntime, saveResult, uploadFile } from "@/lib/api/api";
 
 const initialState: UploadState = {
     status: "idle",
@@ -16,12 +16,14 @@ const initialState: UploadState = {
 
 export function useUpload() {
     const [uploadState, setUploadState] = useState<UploadState>(initialState);
+    const blobRef = useRef<Blob | null>(null);
 
     useEffect(() => {
         return () => {
             if (uploadState.downloadUrl) {
                 URL.revokeObjectURL(uploadState.downloadUrl);
             }
+            blobRef.current = null;
         };
     }, [uploadState.downloadUrl]);
 
@@ -40,8 +42,10 @@ export function useUpload() {
             return;
         }
 
+        const desktop = isDesktopRuntime();
+
         setUploadState({
-            status: "uploading",
+            status: desktop ? "processing" : "uploading",
             progress: 0,
             fileName: file.name,
             fileSize: file.size,
@@ -52,6 +56,7 @@ export function useUpload() {
         try {
             const result = await uploadFile(file, {
                 onProgress: (progress) => {
+                    if (desktop) return;
                     setUploadState((prev) => ({ ...prev, progress }));
                 },
                 onStatusChange: (status) => {
@@ -59,6 +64,7 @@ export function useUpload() {
                 },
             });
 
+            blobRef.current = result.blob;
             const downloadUrl = URL.createObjectURL(result.blob);
             setUploadState({
                 status: "completed",
@@ -69,6 +75,7 @@ export function useUpload() {
                 downloadUrl,
             });
         } catch (error) {
+            blobRef.current = null;
             setUploadState({
                 ...initialState,
                 status: "error",
@@ -78,18 +85,25 @@ export function useUpload() {
         }
     }, []);
 
-    const handleDownload = useCallback(() => {
-        if (!uploadState.downloadUrl) return;
-        const link = document.createElement("a");
-        link.href = uploadState.downloadUrl;
-        link.download = uploadState.fileName;
-        link.click();
-    }, [uploadState.downloadUrl, uploadState.fileName]);
+    const handleDownload = useCallback(async () => {
+        if (!blobRef.current) return;
+        try {
+            await saveResult(blobRef.current, uploadState.fileName);
+        } catch (error) {
+            setUploadState({
+                ...initialState,
+                status: "error",
+                errorMessage:
+                    error instanceof Error ? error.message : "保存文件失败，请重试",
+            });
+        }
+    }, [uploadState.fileName]);
 
     const handleReset = useCallback(() => {
         if (uploadState.downloadUrl) {
             URL.revokeObjectURL(uploadState.downloadUrl);
         }
+        blobRef.current = null;
         setUploadState(initialState);
     }, [uploadState.downloadUrl]);
 

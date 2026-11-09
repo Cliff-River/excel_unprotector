@@ -1,8 +1,9 @@
 [package]
 name = "excel-unprotector-tauri"
 version = "0.1.0"
-description = "A Tauri App"
-authors = ["you"]
+description = "本地离线移除 Excel .xlsx 工作表保护的桌面应用"
+authors = ["Cliff Huang <hzf510920@163.com>"]
+license = "MIT"
 edition = "2024"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
@@ -12,7 +13,7 @@ edition = "2024"
 # to make the lib name unique and wouldn't conflict with the bin name.
 # This seems to be only an issue on Windows, see https://github.com/rust-lang/cargo/issues/8519
 name = "excel_unprotector_tauri_lib"
-crate-type = ["staticlib", "cdylib", "rlib"]
+crate-type = ["rlib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

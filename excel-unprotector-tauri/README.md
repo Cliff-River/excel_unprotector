@@ -112,5 +112,5 @@ cargo test
 
 - 仅支持 `.xlsx`；不支持 `.xlsm` / `.xls`
 - 仅移除**工作表保护**，不处理工作簿结构保护（`<workbookProtection>`）与 chartsheet 保护
-- 本期仅构建 Linux 产物；Windows（NSIS）与 macOS 需在对应平台构建
+- 本期仅构建 Linux 产物；Windows（NSIS）与 macOS（仅 `.app`，未验证）需在对应平台构建
 - 图标仍为脚手架默认值，正式发布前需替换

@@ -28,6 +28,13 @@
   },
   "bundle": {
     "active": true,
+    "publisher": "Cliff Huang",
+    "copyright": "Copyright © 2026 Cliff Huang",
+    "license": "MIT",
+    "licenseFile": "../../LICENSE",
+    "category": "Utility",
+    "shortDescription": "本地离线移除 Excel .xlsx 工作表保护",
+    "longDescription": "Excel Unprotector 在本地离线移除 .xlsx 文件的工作表保护，不上传文件、不依赖网络。仅支持 .xlsx，不处理工作簿结构保护与图表工作表。",
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

@@ -15,6 +15,9 @@ const tauriDist = path.resolve(nextjsRoot, "../excel-unprotector-tauri/dist");
 
 const pnpmCmd = process.platform === "win32" ? "pnpm.cmd" : "pnpm";
 
+// 先清掉上次导出残留，避免 stale 文件被同步进安装包
+rmSync(outDir, { recursive: true, force: true });
+
 console.log("[export-desktop] Building Next.js static export (BUILD_TARGET=desktop)...");
 const build = spawnSync(pnpmCmd, ["exec", "next", "build"], {
     cwd: nextjsRoot,
@@ -29,8 +32,13 @@ if (build.status !== 0) {
     process.exit(build.status ?? 1);
 }
 
-if (!existsSync(path.join(outDir, "index.html"))) {
-    console.error(`[export-desktop] missing ${outDir}/index.html — export did not produce expected output`);
+if (
+    !existsSync(path.join(outDir, "index.html")) ||
+    !existsSync(path.join(outDir, "_next"))
+) {
+    console.error(
+        `[export-desktop] export output incomplete — expected ${outDir}/index.html and ${outDir}/_next/`,
+    );
     process.exit(1);
 }
 

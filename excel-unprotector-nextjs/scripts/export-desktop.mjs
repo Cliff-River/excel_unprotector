@@ -19,6 +19,8 @@ console.log("[export-desktop] Building Next.js static export (BUILD_TARGET=deskt
 const build = spawnSync(pnpmCmd, ["exec", "next", "build"], {
     cwd: nextjsRoot,
     stdio: "inherit",
+    // Windows 上 spawnSync 无法直接启动 .cmd，需经 shell 转发
+    shell: process.platform === "win32",
     env: { ...process.env, BUILD_TARGET: "desktop" },
 });
 

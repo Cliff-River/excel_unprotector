@@ -1,6 +1,8 @@
 allowBuilds:
   sharp: true
   unrs-resolver: true
+# 依赖清单或 lockfile 与 node_modules 不一致时，执行 pnpm run / exec 前自动补装
+verifyDepsBeforeRun: install
 ignoredBuiltDependencies:
   - sharp
   - unrs-resolver
